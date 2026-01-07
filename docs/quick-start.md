@@ -161,3 +161,35 @@ costrict-swebench run-batch \
 ## 8) 常用调试开关
 
 - `COSTRICT_KEEP_RUNNER_CONTAINER=1`：不自动删除 runner container（便于排查 runner 内环境/日志）
+
+## 10) 提交到 SWE-bench（sb-cli）
+
+官方文档：
+
+- https://www.swebench.com/sb-cli/
+
+### 10.1 准备 predictions 文件（给 sb-cli 用）
+
+sb-cli 常见使用的是 JSON 文件（而本项目默认产出 `predictions.jsonl`/`all_preds.jsonl`）。建议你从 run 目录里导出一个 **JSON list** 版本
+
+### 10.2 常用 sb-cli 提交命令
+
+下面是你常用的提交命令模板（按需替换路径与 run_id）：
+
+```bash
+sb-cli submit swe-bench_verified test \
+  --predictions_path costrict-debug-cli/.runs/costrict-debug-agent/predictions.json \
+  --run_id test114514 \
+  --output_dir costrict-debug-cli/sb-cli-reports \
+  --overwrite 1 \
+  --gen_report 1 \
+  --wait_for_evaluation 1
+```
+
+参数含义（简要）：
+
+- `--predictions_path`：待提交的 predictions 文件路径（建议使用上一步导出的 `predictions.json`）
+- `--run_id`：你在 sb-cli/官网侧看到的运行 ID（用于区分多次提交）
+- `--output_dir`：sb-cli 在本地落盘报告的目录
+- `--gen_report 1`：生成报告
+- `--wait_for_evaluation 1`：等待评测完成后再退出
