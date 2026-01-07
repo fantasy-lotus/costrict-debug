@@ -23,6 +23,27 @@ import { computeDiffStats, sanitizeUnifiedDiff } from "../diff/stats"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 import type { ToolUse } from "../../shared/tools"
 import { getAppName } from "../../utils/getAppName"
+import { isSWEBenchModeActive } from "../swebench/tool-interceptor"
+import { shouldShowFirstModificationGuidance, getFirstModificationGuidance } from "../swebench/submit-review"
+
+function hasRunSequentialThinkingMcp(task: Task): boolean {
+	const targetToolName = "mcp--sequential-thinking--sequentialthinking"
+
+	for (const message of task.apiConversationHistory) {
+		const content = (message as any)?.content
+		if (!Array.isArray(content)) {
+			continue
+		}
+
+		for (const block of content) {
+			if (block?.type === "tool_use" && typeof block?.name === "string" && block.name === targetToolName) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
 
 interface ApplyDiffParams {
 	path: string
@@ -42,6 +63,17 @@ export class ApplyDiffTool extends BaseTool<"apply_diff"> {
 	async execute(params: ApplyDiffParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
 		const { askApproval, handleError, pushToolResult, toolProtocol } = callbacks
 		let { path: relPath, diff: diffContent } = params
+
+		// SWE-bench first modification guidance: BLOCK first apply_diff in ANALYZE phase
+		// Force agent to understand the problem before making changes
+		if (isSWEBenchModeActive() && !hasRunSequentialThinkingMcp(task) && shouldShowFirstModificationGuidance(task)) {
+			const guidance = getFirstModificationGuidance()
+			// Block the modification and return guidance
+			// Agent must call apply_diff again after reading the guidance
+			// This ensures agent considers the systematic approach before proceeding
+			pushToolResult(guidance)
+			return // Force return - block the first modification attempt
+		}
 
 		if (diffContent && !task.api.getModel().id.includes("claude")) {
 			diffContent = unescapeHtmlEntities(diffContent)

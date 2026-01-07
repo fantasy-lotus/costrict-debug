@@ -2,6 +2,7 @@ import { DiffStrategy } from "../../../shared/tools"
 import { McpHub } from "../../../services/mcp/McpHub"
 
 export type ToolArgs = {
+	mode?: string
 	cwd: string
 	supportsComputerUse: boolean
 	diffStrategy?: DiffStrategy

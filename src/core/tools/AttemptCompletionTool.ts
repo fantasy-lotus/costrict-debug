@@ -9,6 +9,12 @@ import { Package } from "../../shared/package"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 import type { ToolUse } from "../../shared/tools"
 import { t } from "../../i18n"
+import { isSWEBenchModeActive, recordSWEBenchToolExecution } from "../swebench/tool-interceptor"
+import {
+	shouldShowSWEBenchReviewReminder,
+	getSWEBenchReviewReminder,
+	hasModifiedTestFiles,
+} from "../swebench/submit-review"
 
 interface AttemptCompletionParams {
 	result: string
@@ -83,6 +89,26 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 			}
 
 			task.consecutiveMistakeCount = 0
+
+			// SWE-bench submission review: first call blocks with reminder, second call proceeds
+			if (isSWEBenchModeActive()) {
+				// Record the attempt_completion call to increment counter
+				recordSWEBenchToolExecution("attempt_completion", { result })
+
+				// Check if we should show the review reminder (first attempt)
+				if (shouldShowSWEBenchReviewReminder(task)) {
+					// Check for modified test files
+					const modifiedTestFiles = hasModifiedTestFiles(task)
+
+					// Get the review reminder message
+					const reminder = getSWEBenchReviewReminder(modifiedTestFiles)
+
+					// Block the completion attempt and return error (same as first modification guidance)
+					pushToolResult(formatResponse.toolError(reminder))
+					return
+				}
+				// Second or later attempt: proceed with submission
+			}
 
 			await task.say("completion_result", result, undefined, false)
 

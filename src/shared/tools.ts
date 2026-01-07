@@ -302,6 +302,21 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 		tools: ["switch_mode", "new_task"],
 		alwaysAvailable: true,
 	},
+	swebench: {
+		// Minimal tool set for SWE-bench tasks
+		// Only apply_diff for code modification - no write_to_file, search_and_replace, etc.
+		tools: [
+			"read_file",
+			"list_files",
+			"search_files",
+			"execute_command",
+			"use_mcp_tool",
+			"access_mcp_resource",
+			"apply_diff",
+			"write_to_file",
+			"attempt_completion",
+		],
+	},
 }
 
 // Tools that are always available to all modes.

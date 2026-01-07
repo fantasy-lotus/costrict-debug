@@ -78,6 +78,7 @@ export function getToolDescriptionsForMode(
 ): string {
 	const config = getModeConfig(mode, customModes)
 	const args: ToolArgs = {
+		mode,
 		cwd,
 		supportsComputerUse,
 		diffStrategy,
@@ -119,13 +120,21 @@ export function getToolDescriptionsForMode(
 	// Add always available tools
 	ALWAYS_AVAILABLE_TOOLS.forEach((tool) => tools.add(tool))
 
-	// Conditionally exclude codebase_search if feature is disabled or not configured
-	if (
-		!codeIndexManager ||
-		!(codeIndexManager.isFeatureEnabled && codeIndexManager.isFeatureConfigured && codeIndexManager.isInitialized)
-	) {
-		tools.delete("codebase_search")
+	// In SWE-bench mode, filter ALWAYS_AVAILABLE_TOOLS to only keep essential ones
+	if (mode === "swebench") {
+		// Remove all always available tools except the essential ones
+		const essentialTools = ["attempt_completion"]
+		tools.forEach((tool) => {
+			if (ALWAYS_AVAILABLE_TOOLS.includes(tool as ToolName) && !essentialTools.includes(tool)) {
+				tools.delete(tool)
+			}
+		})
+		// Always exclude update_todo_list in swebench mode
+		tools.delete("update_todo_list")
 	}
+
+	// Always exclude codebase_search (indexing mechanism removed)
+	tools.delete("codebase_search")
 
 	// Conditionally exclude update_todo_list if disabled in settings
 	if (settings?.todoListEnabled === false) {

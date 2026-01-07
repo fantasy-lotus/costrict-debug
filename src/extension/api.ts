@@ -30,8 +30,12 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 	private readonly context: vscode.ExtensionContext
 	private readonly ipc?: IpcServer
 	private readonly taskMap = new Map<string, ClineProvider>()
+	private readonly registeredProviders = new WeakSet<ClineProvider>()
+	private readonly lastLoggedMessageByKey = new Map<string, string>()
 	private readonly log: (...args: unknown[]) => void
 	private logfile?: string
+	private readonly evalInstanceId?: string
+	private readonly evalRunKey?: string
 
 	constructor(
 		outputChannel: vscode.OutputChannel,
@@ -51,7 +55,9 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 				console.log(args)
 			}
 
-			this.logfile = path.join(os.tmpdir(), "costrict-messages.log")
+			this.evalInstanceId = process.env.ROO_CODE_EVAL_INSTANCE_ID
+			this.evalRunKey = process.env.ROO_CODE_EVAL_RUN_KEY
+			this.logfile = process.env.ROO_CODE_MESSAGE_LOG_PATH || path.join(os.tmpdir(), "costrict-messages.log")
 		} else {
 			this.log = () => {}
 		}
@@ -65,35 +71,39 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 			this.log(`[API] ipc server started: socketPath=${socketPath}, pid=${process.pid}, ppid=${process.ppid}`)
 
 			ipc.on(IpcMessageType.TaskCommand, async (_clientId, { commandName, data }) => {
-				switch (commandName) {
-					case TaskCommandName.StartNewTask:
-						this.log(`[API] StartNewTask -> ${data.text}, ${JSON.stringify(data.configuration)}`)
-						await this.startNewTask(data)
-						break
-					case TaskCommandName.CancelTask:
-						this.log(`[API] CancelTask -> ${data}`)
-						await this.cancelTask(data)
-						break
-					case TaskCommandName.CloseTask:
-						this.log(`[API] CloseTask -> ${data}`)
-						await vscode.commands.executeCommand("workbench.action.files.saveFiles")
-						await vscode.commands.executeCommand("workbench.action.closeWindow")
-						break
-					case TaskCommandName.ResumeTask:
-						this.log(`[API] ResumeTask -> ${data}`)
-						try {
-							await this.resumeTask(data)
-						} catch (error) {
-							const errorMessage = error instanceof Error ? error.message : String(error)
-							this.log(`[API] ResumeTask failed for taskId ${data}: ${errorMessage}`)
-							// Don't rethrow - we want to prevent IPC server crashes
-							// The error is logged for debugging purposes
-						}
-						break
-					case TaskCommandName.SendMessage:
-						this.log(`[API] SendMessage -> ${data.text}`)
-						await this.sendMessage(data.text, data.images)
-						break
+				try {
+					switch (commandName) {
+						case TaskCommandName.StartNewTask:
+							this.log(`[API] StartNewTask -> ${data.text}, ${JSON.stringify(data.configuration)}`)
+							await this.startNewTask(data)
+							break
+						case TaskCommandName.CancelTask:
+							this.log(`[API] CancelTask -> ${data}`)
+							await this.cancelTask(data)
+							break
+						case TaskCommandName.CloseTask:
+							this.log(`[API] CloseTask -> ${data}`)
+							await vscode.commands.executeCommand("workbench.action.files.saveFiles")
+							await vscode.commands.executeCommand("workbench.action.closeWindow")
+							break
+						case TaskCommandName.ResumeTask:
+							this.log(`[API] ResumeTask -> ${data}`)
+							try {
+								await this.resumeTask(data)
+							} catch (error) {
+								const errorMessage = error instanceof Error ? error.message : String(error)
+								this.log(`[API] ResumeTask failed for taskId ${data}: ${errorMessage}`)
+							}
+							break
+						case TaskCommandName.SendMessage:
+							this.log(`[API] SendMessage -> ${data.text}`)
+							await this.sendMessage(data.text, data.images)
+							break
+					}
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error)
+					this.log(`[API] TaskCommand handler error for ${commandName}: ${errorMessage}`)
+					this.emit(RooCodeEventName.TaskAborted, "start_failed")
 				}
 			})
 		}
@@ -113,11 +123,13 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		text,
 		images,
 		newTab,
+		initialTodos,
 	}: {
 		configuration: RooCodeSettings
 		text?: string
 		images?: string[]
 		newTab?: boolean
+		initialTodos?: import("@roo-code/types").TodoItem[]
 	}) {
 		let provider: ClineProvider
 
@@ -140,6 +152,7 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 
 		const options: CreateTaskOptions = {
 			consecutiveMistakeLimit: Number.MAX_SAFE_INTEGER,
+			initialTodos: initialTodos,
 		}
 
 		const task = await provider.createTask(text, images, undefined, options, configuration)
@@ -206,13 +219,30 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 	}
 
 	private registerListeners(provider: ClineProvider) {
+		if (this.registeredProviders.has(provider)) {
+			return
+		}
+		this.registeredProviders.add(provider)
+
 		provider.on(RooCodeEventName.TaskCreated, (task) => {
 			// Task Lifecycle
 
 			task.on(RooCodeEventName.TaskStarted, async () => {
 				this.emit(RooCodeEventName.TaskStarted, task.taskId)
 				this.taskMap.set(task.taskId, provider)
-				await this.fileLog(`[${new Date().toISOString()}] taskStarted -> ${task.taskId}\n`)
+				await this.fileLog(
+					`[${new Date().toISOString()}] ${JSON.stringify(
+						{
+							$event: "taskStarted",
+							taskId: task.taskId,
+							...(this.evalInstanceId ? { instanceId: this.evalInstanceId } : {}),
+							...(this.evalRunKey ? { runKey: this.evalRunKey } : {}),
+							rooTaskId: task.taskId,
+						},
+						null,
+						2,
+					)}\n`,
+				)
 			})
 
 			task.on(RooCodeEventName.TaskCompleted, async (_, tokenUsage, toolUsage) => {
@@ -223,13 +253,39 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 				this.taskMap.delete(task.taskId)
 
 				await this.fileLog(
-					`[${new Date().toISOString()}] taskCompleted -> ${task.taskId} | ${JSON.stringify(tokenUsage, null, 2)} | ${JSON.stringify(toolUsage, null, 2)}\n`,
+					`[${new Date().toISOString()}] ${JSON.stringify(
+						{
+							$event: "taskCompleted",
+							taskId: task.taskId,
+							...(this.evalInstanceId ? { instanceId: this.evalInstanceId } : {}),
+							...(this.evalRunKey ? { runKey: this.evalRunKey } : {}),
+							rooTaskId: task.taskId,
+							tokenUsage,
+							toolUsage,
+						},
+						null,
+						2,
+					)}\n`,
 				)
 			})
 
 			task.on(RooCodeEventName.TaskAborted, () => {
 				this.emit(RooCodeEventName.TaskAborted, task.taskId)
 				this.taskMap.delete(task.taskId)
+
+				void this.fileLog(
+					`[${new Date().toISOString()}] ${JSON.stringify(
+						{
+							$event: "taskAborted",
+							taskId: task.taskId,
+							...(this.evalInstanceId ? { instanceId: this.evalInstanceId } : {}),
+							...(this.evalRunKey ? { runKey: this.evalRunKey } : {}),
+							rooTaskId: task.taskId,
+						},
+						null,
+						2,
+					)}\n`,
+				)
 			})
 
 			task.on(RooCodeEventName.TaskFocused, () => {
@@ -288,7 +344,36 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 				this.emit(RooCodeEventName.Message, { taskId: task.taskId, ...message })
 
 				if (message.message.partial !== true) {
-					await this.fileLog(`[${new Date().toISOString()}] ${JSON.stringify(message.message, null, 2)}\n`)
+					if (
+						message.message.type === "say" &&
+						message.message.say === "text" &&
+						(!message.message.text || message.message.text.trim().length === 0)
+					) {
+						return
+					}
+
+					const record = {
+						...message.message,
+						...(this.evalInstanceId ? { instanceId: this.evalInstanceId } : {}),
+						...(this.evalRunKey ? { runKey: this.evalRunKey } : {}),
+						rooTaskId: task.taskId,
+					}
+
+					const recordJson = JSON.stringify(record)
+					const dedupeKey = `${task.taskId}:${message.action}:${message.message.ts}`
+					const lastRecordJson = this.lastLoggedMessageByKey.get(dedupeKey)
+					if (lastRecordJson === recordJson) {
+						return
+					}
+					this.lastLoggedMessageByKey.set(dedupeKey, recordJson)
+					if (this.lastLoggedMessageByKey.size > 2000) {
+						const firstKey = this.lastLoggedMessageByKey.keys().next().value as string | undefined
+						if (firstKey) {
+							this.lastLoggedMessageByKey.delete(firstKey)
+						}
+					}
+
+					await this.fileLog(`[${new Date().toISOString()}] ${JSON.stringify(record, null, 2)}\n`)
 				}
 			})
 

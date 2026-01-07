@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import type OpenAI from "openai"
 import type { ModeConfig, ModelInfo } from "@roo-code/types"
-import { filterNativeToolsForMode, filterMcpToolsForMode, applyModelToolCustomization } from "../filter-tools-for-mode"
+import {
+	filterNativeToolsForMode,
+	filterMcpToolsForMode,
+	applyModelToolCustomization,
+	isToolAllowedInMode,
+} from "../filter-tools-for-mode"
 import * as toolsModule from "../../../../shared/tools"
 
 describe("filterNativeToolsForMode", () => {
@@ -342,6 +347,40 @@ describe("filterNativeToolsForMode", () => {
 			undefined,
 			{
 				todoListEnabled: false,
+			},
+			undefined,
+		)
+		const toolNames = filtered.map((t) => ("function" in t ? t.function.name : ""))
+		expect(toolNames).not.toContain("update_todo_list")
+	})
+
+	it("should exclude update_todo_list in swebench mode", () => {
+		const swebenchMode: ModeConfig = {
+			slug: "swebench",
+			name: "SWE-bench",
+			roleDefinition: "Test",
+			groups: ["swebench"] as const,
+		}
+
+		const mockTodoTool: OpenAI.Chat.ChatCompletionTool = {
+			type: "function",
+			function: {
+				name: "update_todo_list",
+				description: "Update todo list",
+				parameters: {},
+			},
+		}
+
+		const toolsWithTodo = [...mockNativeTools, mockTodoTool]
+
+		const filtered = filterNativeToolsForMode(
+			toolsWithTodo,
+			"swebench",
+			[swebenchMode],
+			{},
+			undefined,
+			{
+				todoListEnabled: true,
 			},
 			undefined,
 		)
@@ -848,5 +887,52 @@ describe("filterMcpToolsForMode", () => {
 			expect(toolNames).not.toContain("apply_diff")
 			expect(toolNames).not.toContain("write_to_file")
 		})
+	})
+})
+
+describe("isToolAllowedInMode", () => {
+	it("should exclude update_todo_list in swebench mode even when todoListEnabled is true", () => {
+		const swebenchMode: ModeConfig = {
+			slug: "swebench",
+			name: "SWE-bench",
+			roleDefinition: "Test",
+			groups: ["swebench"] as const,
+		}
+
+		const result = isToolAllowedInMode("update_todo_list", "swebench", [swebenchMode], {}, undefined, {
+			todoListEnabled: true,
+		})
+
+		expect(result).toBe(false)
+	})
+
+	it("should allow update_todo_list in code mode when todoListEnabled is true", () => {
+		const codeMode: ModeConfig = {
+			slug: "code",
+			name: "Code",
+			roleDefinition: "Test",
+			groups: ["read", "edit", "browser", "command", "mcp"] as const,
+		}
+
+		const result = isToolAllowedInMode("update_todo_list", "code", [codeMode], {}, undefined, {
+			todoListEnabled: true,
+		})
+
+		expect(result).toBe(true)
+	})
+
+	it("should exclude update_todo_list in code mode when todoListEnabled is false", () => {
+		const codeMode: ModeConfig = {
+			slug: "code",
+			name: "Code",
+			roleDefinition: "Test",
+			groups: ["read", "edit", "browser", "command", "mcp"] as const,
+		}
+
+		const result = isToolAllowedInMode("update_todo_list", "code", [codeMode], {}, undefined, {
+			todoListEnabled: false,
+		})
+
+		expect(result).toBe(false)
 	})
 })

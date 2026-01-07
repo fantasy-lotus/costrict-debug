@@ -150,6 +150,10 @@ describe("executeCommandTool", () => {
 		}
 	})
 
+	afterEach(() => {
+		delete process.env.ROO_CODE_SWE_INSTANCE_CONTAINER
+	})
+
 	/**
 	 * Tests for HTML entity unescaping in commands
 	 * This verifies that HTML entities are properly converted to their actual characters
@@ -201,6 +205,31 @@ describe("executeCommandTool", () => {
 			// The exact message depends on the terminal mock's behavior
 			const result = mockPushToolResult.mock.calls[0][0]
 			expect(result).toContain("Command")
+		})
+
+		it("should block commands that reference /testbed when running via docker exec in SWE-bench mode", async () => {
+			// Setup
+			mockToolUse.params.command = "cat /testbed/README.md"
+			process.env.ROO_CODE_SWE_INSTANCE_CONTAINER = "swe-instance-container"
+
+			// Execute
+			await executeCommandTool.handle(mockCline as unknown as Task, mockToolUse, {
+				askApproval: mockAskApproval as unknown as AskApproval,
+				handleError: mockHandleError as unknown as HandleError,
+				pushToolResult: mockPushToolResult as unknown as PushToolResult,
+				removeClosingTag: mockRemoveClosingTag as unknown as RemoveClosingTag,
+				toolProtocol: "xml",
+			} as any)
+
+			// Verify
+			expect(mockPushToolResult).toHaveBeenCalled()
+			const result = mockPushToolResult.mock.calls[0][0]
+			expect(result).toContain("Blocked")
+			expect(result).toContain("/testbed")
+			// Should not run via terminal fallback
+			expect(executeCommandModule.executeCommandInTerminal).not.toHaveBeenCalled()
+			// Should mark failure in current turn
+			expect(mockCline.didToolFailInCurrentTurn).toBe(true)
 		})
 
 		it("should pass along custom working directory if provided", async () => {

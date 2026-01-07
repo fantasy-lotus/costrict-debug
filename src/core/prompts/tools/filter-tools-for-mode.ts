@@ -268,6 +268,12 @@ export function filterNativeToolsForMode(
 	)
 	allowedToolNames = customizedTools
 
+	// In swebench mode, do not allow ALWAYS_AVAILABLE_TOOLS to broaden the tool surface.
+	// Hard-limit to the dedicated swebench tool set.
+	if (modeSlug === "swebench") {
+		allowedToolNames = new Set(TOOL_GROUPS.swebench.tools)
+	}
+
 	// Conditionally exclude codebase_search if feature is disabled or not configured
 	if (
 		!codeIndexManager ||
@@ -277,7 +283,8 @@ export function filterNativeToolsForMode(
 	}
 
 	// Conditionally exclude update_todo_list if disabled in settings
-	if (settings?.todoListEnabled === false) {
+	// In swebench mode, always exclude update_todo_list
+	if (modeSlug === "swebench" || settings?.todoListEnabled === false) {
 		allowedToolNames.delete("update_todo_list")
 	}
 
@@ -371,6 +378,10 @@ export function isToolAllowedInMode(
 			)
 		}
 		if (toolName === "update_todo_list") {
+			// Always disable in swebench mode
+			if (modeSlug === "swebench") {
+				return false
+			}
 			return settings?.todoListEnabled !== false
 		}
 		if (toolName === "generate_image") {

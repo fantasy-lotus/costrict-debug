@@ -225,7 +225,10 @@ export async function activate(
 		loginTip()
 
 		// init project-wiki subtasks.
-		ensureProjectWikiSubtasksExists()
+		const currentMode = provider.getValue("mode")
+		if (currentMode !== "swebench") {
+			ensureProjectWikiSubtasksExists()
+		}
 	}, 2000)
 }
 

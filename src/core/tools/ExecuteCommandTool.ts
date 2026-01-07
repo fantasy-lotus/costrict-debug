@@ -2,6 +2,8 @@ import fs from "fs/promises"
 import * as path from "path"
 import * as vscode from "vscode"
 
+import { execa } from "execa"
+
 import delay from "delay"
 
 import { CommandExecutionStatus, DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT } from "@roo-code/types"
@@ -59,10 +61,28 @@ export class ExecuteCommandTool extends BaseTool<"execute_command"> {
 			task.consecutiveMistakeCount = 0
 
 			const unescapedCommand = unescapeHtmlEntities(command)
-			const didApprove = await askApproval("command", unescapedCommand)
-
-			if (!didApprove) {
+			const sweInstanceContainer = process.env.ROO_CODE_SWE_INSTANCE_CONTAINER
+			if (sweInstanceContainer && /(^|\s|['"`(\[{])\/testbed(\/|\b)/.test(unescapedCommand)) {
+				task.consecutiveMistakeCount++
+				task.recordToolError(
+					"execute_command",
+					"Blocked execute_command: /testbed path used in SWE-bench docker exec mode",
+				)
+				task.didToolFailInCurrentTurn = true
+				pushToolResult(
+					"Blocked: this command references '/testbed' while running in SWE-bench docker exec mode. " +
+						"In this setup, your working tree (where edits are applied) is '/workspace/repo', while '/testbed' " +
+						"is the image's original repo and may be stale. " +
+						"Use relative paths (from the repo root), '/workspace/repo/...', or pass cwd='.' / cwd='<subdir>' (relative to /workspace/repo).",
+				)
 				return
+			}
+			if (!sweInstanceContainer) {
+				const didApprove = await askApproval("command", unescapedCommand)
+
+				if (!didApprove) {
+					return
+				}
 			}
 
 			const executionId = task.lastMessageTs?.toString() ?? Date.now().toString()
@@ -101,6 +121,20 @@ export class ExecuteCommandTool extends BaseTool<"execute_command"> {
 				terminalOutputLineLimit,
 				terminalOutputCharacterLimit,
 				commandExecutionTimeout,
+			}
+
+			if (sweInstanceContainer) {
+				const [rejected, result] = await executeCommandInDockerExec(task, {
+					...options,
+					sweInstanceContainer,
+				})
+
+				if (rejected) {
+					task.didRejectTool = true
+				}
+
+				pushToolResult(result)
+				return
 			}
 
 			try {
@@ -155,6 +189,97 @@ export type ExecuteCommandOptions = {
 	terminalOutputLineLimit?: number
 	terminalOutputCharacterLimit?: number
 	commandExecutionTimeout?: number
+}
+
+type ExecuteCommandDockerExecOptions = ExecuteCommandOptions & {
+	sweInstanceContainer: string
+}
+
+async function executeCommandInDockerExec(
+	task: Task,
+	{
+		executionId,
+		command,
+		customCwd,
+		terminalOutputLineLimit = 500,
+		terminalOutputCharacterLimit = DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT,
+		commandExecutionTimeout = 0,
+		sweInstanceContainer,
+	}: ExecuteCommandDockerExecOptions,
+): Promise<[boolean, ToolResponse]> {
+	const containerWorkdirBase = process.env.ROO_CODE_SWE_CONTAINER_WORKDIR || "/workspace/repo"
+	let workingDir = containerWorkdirBase
+	if (customCwd) {
+		if (path.isAbsolute(customCwd)) {
+			workingDir = customCwd
+		} else {
+			workingDir = path.posix.join(containerWorkdirBase, customCwd.replace(/\\/g, "/"))
+		}
+	}
+
+	const pythonPathEntries = [
+		containerWorkdirBase,
+		path.posix.join(containerWorkdirBase, "lib"),
+		path.posix.join(containerWorkdirBase, "src"),
+	]
+		.filter(Boolean)
+		.join(":")
+
+	const wrappedCommand = `export PYTHONPATH="${pythonPathEntries}:\${PYTHONPATH:-}"; ${command}`
+
+	const provider = await task.providerRef.deref()
+	const status: CommandExecutionStatus = { executionId, status: "started", pid: undefined, command }
+	provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(status) })
+
+	try {
+		const args = ["exec", "--user", "root", "-w", workingDir, sweInstanceContainer, "bash", "-lc", wrappedCommand]
+
+		const result = await execa("docker", args, {
+			all: true,
+			reject: false,
+			timeout: commandExecutionTimeout > 0 ? commandExecutionTimeout : undefined,
+			env: {
+				...process.env,
+				LANG: "en_US.UTF-8",
+				LC_ALL: "en_US.UTF-8",
+			},
+		})
+
+		const combined = String(result.all ?? "")
+		const output = Terminal.compressTerminalOutput(combined, terminalOutputLineLimit, terminalOutputCharacterLimit)
+
+		if (output.trim().length > 0) {
+			await task.say("command_output", output, undefined, false, undefined, undefined, { isNonInteractive: true })
+		}
+
+		const exitStatus: CommandExecutionStatus = {
+			executionId,
+			status: "exited",
+			exitCode: result.exitCode ?? 0,
+		}
+		provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(exitStatus) })
+
+		return [
+			false,
+			`Command executed via docker exec in SWE instance container '${sweInstanceContainer}' within working directory '${workingDir}'. Exit code: ${result.exitCode ?? 0}\nOutput:\n${output}`,
+		]
+	} catch (error) {
+		const exitStatus: CommandExecutionStatus = { executionId, status: "exited", exitCode: 1 }
+		provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(exitStatus) })
+		await task.say(
+			"command_output",
+			`Command failed to execute via docker exec: ${error instanceof Error ? error.message : String(error)}`,
+			undefined,
+			false,
+			undefined,
+			undefined,
+			{ isNonInteractive: true },
+		)
+		return [
+			false,
+			`Command failed to execute via docker exec: ${error instanceof Error ? error.message : String(error)}`,
+		]
+	}
 }
 
 export async function executeCommandInTerminal(

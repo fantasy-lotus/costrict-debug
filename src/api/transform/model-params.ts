@@ -26,6 +26,9 @@ import {
 	getOpenRouterReasoning,
 } from "./reasoning"
 
+// Import SWE-bench reasoning configuration
+import { getSWEBenchReasoningConfig } from "../../core/swebench"
+
 type Format = "anthropic" | "openai" | "gemini" | "openrouter" | "zgsm"
 
 type GetModelParamsOptions<T extends Format> = {
@@ -122,6 +125,13 @@ export function getModelParams({
 	let reasoningEffort: ModelParams["reasoningEffort"] = undefined
 	let verbosity: VerbosityLevel | undefined = customVerbosity
 
+	// Check for SWE-bench reasoning configuration override
+	const swebenchReasoningConfig = getSWEBenchReasoningConfig()
+	const effectiveReasoningEffort = swebenchReasoningConfig?.reasoningEffort
+		? (swebenchReasoningConfig.reasoningEffort as ReasoningEffortExtended | "disable")
+		: customReasoningEffort
+	const effectiveReasoningBudget = swebenchReasoningConfig?.reasoningBudget ?? customMaxThinkingTokens
+
 	if (shouldUseReasoningBudget({ model, settings })) {
 		// Check if this is a Gemini 2.5 Pro model
 		const isGemini25Pro = modelId.includes("gemini-2.5-pro")
@@ -131,11 +141,11 @@ export function getModelParams({
 		const defaultThinkingTokens = isGemini25Pro
 			? GEMINI_25_PRO_MIN_THINKING_TOKENS
 			: DEFAULT_HYBRID_REASONING_MODEL_THINKING_TOKENS
-		reasoningBudget = customMaxThinkingTokens ?? defaultThinkingTokens
+		reasoningBudget = effectiveReasoningBudget ?? defaultThinkingTokens
 
 		// Reasoning cannot exceed 80% of the `maxTokens` value.
 		// maxTokens should always be defined for reasoning budget models, but add a guard just in case
-		if (maxTokens && reasoningBudget > Math.floor(maxTokens * 0.8)) {
+		if (maxTokens && reasoningBudget && reasoningBudget > Math.floor(maxTokens * 0.8)) {
 			reasoningBudget = Math.floor(maxTokens * 0.8)
 		}
 
@@ -143,7 +153,7 @@ export function getModelParams({
 		// For Gemini 2.5 Pro models, the minimum is 128 tokens
 		// For other models, the minimum is 1024 tokens
 		const minThinkingTokens = isGemini25Pro ? GEMINI_25_PRO_MIN_THINKING_TOKENS : 1024
-		if (reasoningBudget < minThinkingTokens) {
+		if (reasoningBudget && reasoningBudget < minThinkingTokens) {
 			reasoningBudget = minThinkingTokens
 		}
 
@@ -153,10 +163,10 @@ export function getModelParams({
 	} else if (shouldUseReasoningEffort({ model, settings })) {
 		// "Traditional" reasoning models use the `reasoningEffort` parameter.
 		// Only fallback to model default if user hasn't explicitly set a value.
-		// If customReasoningEffort is "disable", don't fallback to model default.
+		// If effectiveReasoningEffort is "disable", don't fallback to model default.
 		const effort =
-			customReasoningEffort !== undefined
-				? customReasoningEffort
+			effectiveReasoningEffort !== undefined
+				? effectiveReasoningEffort
 				: (model.reasoningEffort as ReasoningEffortExtended | "disable" | undefined)
 		// Capability and settings checks are handled by shouldUseReasoningEffort.
 		// Here we simply propagate the resolved effort into the params, while
@@ -172,7 +182,12 @@ export function getModelParams({
 		return {
 			format,
 			...params,
-			reasoning: getAnthropicReasoning({ model, reasoningBudget, reasoningEffort, settings }),
+			reasoning: getAnthropicReasoning({
+				model,
+				reasoningBudget,
+				reasoningEffort: effectiveReasoningEffort,
+				settings,
+			}),
 		}
 	} else if (format === "openai") {
 		// Special case for o1 and o3-mini, which don't support temperature.
@@ -184,14 +199,24 @@ export function getModelParams({
 		return {
 			format,
 			...params,
-			reasoning: getOpenAiReasoning({ model, reasoningBudget, reasoningEffort, settings }),
+			reasoning: getOpenAiReasoning({
+				model,
+				reasoningBudget,
+				reasoningEffort: effectiveReasoningEffort,
+				settings,
+			}),
 			tools: model.supportsNativeTools,
 		}
 	} else if (format === "gemini") {
 		return {
 			format,
 			...params,
-			reasoning: getGeminiReasoning({ model, reasoningBudget, reasoningEffort, settings }),
+			reasoning: getGeminiReasoning({
+				model,
+				reasoningBudget,
+				reasoningEffort: effectiveReasoningEffort,
+				settings,
+			}),
 		}
 	} else if (format === "zgsm") {
 		// Special case for o1 and o3-mini, which don't support temperature.
@@ -203,7 +228,12 @@ export function getModelParams({
 		return {
 			format,
 			...params,
-			reasoning: getOpenAiReasoning({ model, reasoningBudget, reasoningEffort, settings }),
+			reasoning: getOpenAiReasoning({
+				model,
+				reasoningBudget,
+				reasoningEffort: effectiveReasoningEffort,
+				settings,
+			}),
 		}
 	} else {
 		// Special case for o1-pro, which doesn't support temperature.
@@ -218,7 +248,12 @@ export function getModelParams({
 		return {
 			format,
 			...params,
-			reasoning: getOpenRouterReasoning({ model, reasoningBudget, reasoningEffort, settings }),
+			reasoning: getOpenRouterReasoning({
+				model,
+				reasoningBudget,
+				reasoningEffort: effectiveReasoningEffort,
+				settings,
+			}),
 		}
 	}
 }

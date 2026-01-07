@@ -136,6 +136,7 @@ export class ClineProvider
 	extends EventEmitter<TaskProviderEvents>
 	implements vscode.WebviewViewProvider, TelemetryPropertiesProvider, TaskProviderLike
 {
+	private static readonly OPENROUTER_DEFAULT_MODEL_ID = "gpt-5.1-codex-mini"
 	// Used in package.json as the view's id. This value cannot be changed due
 	// to how VSCode caches views based on their id, and updating the id would
 	// break existing instances of the extension.
@@ -1602,7 +1603,10 @@ export class ClineProvider
 			...apiConfiguration,
 			apiProvider: "openrouter",
 			openRouterApiKey: apiKey,
-			openRouterModelId: apiConfiguration?.openRouterModelId || openRouterDefaultModelId,
+			openRouterModelId:
+				apiConfiguration?.openRouterModelId ||
+				ClineProvider.OPENROUTER_DEFAULT_MODEL_ID ||
+				openRouterDefaultModelId,
 		}
 
 		await this.upsertProviderProfile(currentApiConfigName, newConfiguration)

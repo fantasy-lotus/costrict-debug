@@ -4,6 +4,7 @@ import { toolNames as validToolNames } from "@roo-code/types"
 import { type Mode, FileRestrictionError, getModeBySlug, getGroupName } from "../../shared/modes"
 import { EXPERIMENT_IDS } from "../../shared/experiments"
 import { TOOL_GROUPS, ALWAYS_AVAILABLE_TOOLS } from "../../shared/tools"
+import { validateSWEBenchToolUse, applySWEBenchPathMapping } from "../swebench"
 
 /**
  * Checks if a tool name is a valid, known tool.
@@ -32,13 +33,24 @@ export function validateToolUse(
 	toolParams?: Record<string, unknown>,
 	experiments?: Record<string, boolean>,
 	includedTools?: string[],
-): void {
+): { mappedParams?: Record<string, unknown> } {
 	// First, check if the tool name is actually a valid/known tool
 	// This catches completely invalid tool names like "edit_file" that don't exist
 	if (!isValidToolName(toolName)) {
 		throw new Error(
 			`Unknown tool "${toolName}". This tool does not exist. Please use one of the available tools: ${validToolNames.join(", ")}.`,
 		)
+	}
+
+	// Apply SWE-bench path mapping (if active)
+	// This maps /testbed/* paths to /workspace/repo/* paths transparently
+	const mappedParams = applySWEBenchPathMapping(toolName, toolParams as Record<string, unknown>)
+
+	// Check SWE-bench state machine constraints (if active)
+	// This enforces the "run tests first" workflow in SWE-bench mode
+	const swebenchBlockReason = validateSWEBenchToolUse(toolName, mappedParams as Record<string, unknown>)
+	if (swebenchBlockReason) {
+		throw new Error(swebenchBlockReason)
 	}
 
 	// Then check if the tool is allowed for the current mode
@@ -48,13 +60,16 @@ export function validateToolUse(
 			mode,
 			customModes ?? [],
 			toolRequirements,
-			toolParams,
+			mappedParams,
 			experiments,
 			includedTools,
 		)
 	) {
 		throw new Error(`Tool "${toolName}" is not allowed in ${mode} mode.`)
 	}
+
+	// Return the mapped parameters so they can be used by the tool
+	return { mappedParams }
 }
 
 const EDIT_OPERATION_PARAMS = ["diff", "content", "operations", "search", "replace", "args", "line"] as const

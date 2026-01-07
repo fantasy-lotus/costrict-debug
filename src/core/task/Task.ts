@@ -2,6 +2,7 @@ import * as path from "path"
 import * as vscode from "vscode"
 import os from "os"
 import crypto from "crypto"
+import * as fs from "fs/promises"
 import EventEmitter from "events"
 
 import { AskIgnoredError } from "./AskIgnoredError"
@@ -103,7 +104,7 @@ import { RooProtectedController } from "../protect/RooProtectedController"
 import { type AssistantMessageContent, presentAssistantMessage } from "../assistant-message"
 import { AssistantMessageParser } from "../assistant-message/AssistantMessageParser"
 import { NativeToolCallParser } from "../assistant-message/NativeToolCallParser"
-import { manageContext, willManageContext } from "../context-management"
+import { manageContext, willManageContext, type ContextManagementResult } from "../context-management"
 import { ClineProvider } from "../webview/ClineProvider"
 import { MultiSearchReplaceDiffStrategy } from "../diff/strategies/multi-search-replace"
 import { MultiFileSearchReplaceDiffStrategy } from "../diff/strategies/multi-file-search-replace"
@@ -270,6 +271,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	rooIgnoreController?: RooIgnoreController
 	rooProtectedController?: RooProtectedController
 	fileContextTracker: FileContextTracker
+	swebenchInterceptor?: any // SWEBenchToolInterceptor - using any to avoid circular import
 	urlContentFetcher: UrlContentFetcher
 	terminalProcess?: RooTerminalProcess
 
@@ -299,6 +301,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	consecutiveMistakeLimit: number
 	consecutiveMistakeCountForApplyDiff: Map<string, number> = new Map()
 	toolUsage: ToolUsage = {}
+	private consecutiveNoToolTinyAssistantResponses: number = 0
+	private readonly SWEBENCH_TINY_ASSISTANT_RESPONSE_CHAR_LIMIT = 40
+	private readonly SWEBENCH_TINY_ASSISTANT_RESPONSE_GRACE_TURNS = 5
 
 	// Checkpoints
 	enableCheckpoints: boolean
@@ -587,6 +592,39 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		try {
 			const state = await provider.getState()
 			this._taskMode = state?.mode || defaultModeSlug
+
+			// Activate SWE-bench state machine if mode is swebench
+			if (this._taskMode === "swebench") {
+				const { activateSWEBenchMode } = await import("../swebench")
+
+				// Get instance ID from environment variable (set by SWE-bench runner)
+				const instanceId = process.env.ROO_CODE_EVAL_INSTANCE_ID
+
+				this.swebenchInterceptor = activateSWEBenchMode(
+					{
+						strictMode: true,
+						onStateChange: (oldState, newState) => {
+							// Use console.log for SWE-bench runner to capture in progress.log
+							console.log(`[SWEBench] Phase transition: ${oldState.phase} -> ${newState.phase}`)
+						},
+						onToolBlocked: (toolName, reason) => {
+							// Use console.log for SWE-bench runner to capture in progress.log
+							console.log(`[SWEBench] Tool blocked: ${toolName} - ${reason}`)
+						},
+						onToolGuidance: (toolName, guidance) => {
+							// Second jinnang: append guidance to tool result
+							// This will be handled by the tool execution flow
+							console.log(`[SWEBench] Tool guidance for ${toolName}: ${guidance.substring(0, 100)}...`)
+							// The guidance will be appended to the tool result by the interceptor
+						},
+						onLog: (message) => {
+							// Use console.log for SWE-bench runner to capture in progress.log
+							console.log(message)
+						},
+					},
+					instanceId,
+				)
+			}
 		} catch (error) {
 			// If there's an error getting state, use the default mode
 			this._taskMode = defaultModeSlug
@@ -1107,6 +1145,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// Automatically approve if the ask according to the user's settings.
 		const provider = this.providerRef.deref()
 		const state = provider ? await provider.getState() : undefined
+		if (state?.mode === "swebench" && (type === "resume_task" || type === "resume_completed_task")) {
+			this.approveAsk()
+		}
 		const approval = await checkAutoApproval({ state, ask: type, text, isProtected })
 
 		if (approval.decision === "approve") {
@@ -2046,6 +2087,17 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	public dispose(): void {
 		console.log(`[Task#dispose] disposing task ${this.taskId}.${this.instanceId}`)
 
+		// Deactivate SWE-bench mode if this task was using it
+		if (this._taskMode === "swebench") {
+			import("../swebench")
+				.then(({ deactivateSWEBenchMode }) => {
+					deactivateSWEBenchMode()
+				})
+				.catch((error) => {
+					console.error("Error deactivating SWE-bench mode:", error)
+				})
+		}
+
 		// Cancel any in-progress HTTP request
 		try {
 			this.cancelCurrentRequest()
@@ -2279,7 +2331,6 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				// const state = await this.providerRef.deref()?.getState()
 				const toolProtocol = resolveToolProtocol(this.apiConfiguration, modelInfo)
 				nextUserContent = [{ type: "text", text: formatResponse.noToolsUsed(toolProtocol) }]
-				this.consecutiveMistakeCount++
 			}
 		}
 	}
@@ -3345,7 +3396,30 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						// const state = await this.providerRef.deref()?.getState()
 						const toolProtocol = resolveToolProtocol(this.apiConfiguration, modelInfo)
 						this.userMessageContent.push({ type: "text", text: formatResponse.noToolsUsed(toolProtocol) })
-						this.consecutiveMistakeCount++
+
+						if (this._taskMode === "swebench") {
+							const trimmed = assistantMessage.trim()
+							if (
+								trimmed.length > 0 &&
+								trimmed.length < this.SWEBENCH_TINY_ASSISTANT_RESPONSE_CHAR_LIMIT
+							) {
+								this.consecutiveNoToolTinyAssistantResponses++
+								if (
+									this.consecutiveNoToolTinyAssistantResponses >=
+									this.SWEBENCH_TINY_ASSISTANT_RESPONSE_GRACE_TURNS
+								) {
+									this.consecutiveMistakeCount++
+								}
+							} else {
+								this.consecutiveNoToolTinyAssistantResponses = 0
+								this.consecutiveMistakeCount++
+							}
+						} else {
+							this.consecutiveMistakeCount++
+						}
+					}
+					if (didToolUse) {
+						this.consecutiveNoToolTinyAssistantResponses = 0
 					}
 
 					// Push to stack if there's content OR if we're paused waiting for a subtask.
@@ -3551,7 +3625,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			// Resolve the tool protocol based on profile, model, and provider settings
 			const toolProtocol = resolveToolProtocol(apiConfiguration ?? this.apiConfiguration, modelInfo)
 
-			return SYSTEM_PROMPT(
+			let systemPrompt = await SYSTEM_PROMPT(
 				provider.context,
 				this.cwd,
 				canUseBrowserTool,
@@ -3584,6 +3658,49 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				undefined, // todoList
 				this.api.getModel().id,
 			)
+
+			if ((mode ?? defaultModeSlug) === "swebench") {
+				const stateMachine = this.swebenchInterceptor?.getStateMachine?.()
+				const phaseGuidance = stateMachine?.getPhaseGuidance?.()
+				if (phaseGuidance) {
+					systemPrompt += `\n\n## SWE-bench Phase Guidance\n\n${phaseGuidance}`
+					try {
+						const state = stateMachine?.getState?.()
+						const phase = state?.phase ?? "unknown"
+						const testsRunCount = state?.testsRunCount ?? 0
+						const modificationCount = state?.modificationCount ?? 0
+						const promptHash = crypto.createHash("sha1").update(systemPrompt).digest("hex").slice(0, 8)
+						const guidanceHash = crypto.createHash("sha1").update(phaseGuidance).digest("hex").slice(0, 8)
+						console.log(
+							`[SWEBench] Prompt phase=${phase} testsRun=${testsRunCount} mods=${modificationCount} systemPromptHash=${promptHash} phaseGuidanceHash=${guidanceHash}`,
+						)
+						const messageLogPath = process.env.ROO_CODE_MESSAGE_LOG_PATH
+						if (messageLogPath) {
+							const record = {
+								type: "log",
+								log: "system_prompt",
+								ts: Date.now(),
+								instanceId: process.env.ROO_CODE_EVAL_INSTANCE_ID,
+								runKey: process.env.ROO_CODE_EVAL_RUN_KEY,
+								phase,
+								testsRunCount,
+								modificationCount,
+								systemPromptHash: promptHash,
+								phaseGuidanceHash: guidanceHash,
+							}
+							await fs.appendFile(
+								messageLogPath,
+								`[${new Date().toISOString()}] ${JSON.stringify(record)}\n`,
+								"utf8",
+							)
+						}
+					} catch (error) {
+						console.log(`[SWEBench] Prompt logging failed: ${String(error)}`)
+					}
+				}
+			}
+
+			return systemPrompt
 		})()
 	}
 
@@ -3781,44 +3898,111 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					: await this.api.countTokens([{ type: "text", text: lastMessageContent as string }])
 			}
 
-			const contextManagementWillRun = willManageContext({
-				totalTokens: contextTokens,
-				contextWindow,
-				maxTokens,
-				autoCondenseContext,
-				autoCondenseContextPercent,
-				profileThresholds,
-				currentProfileId,
-				lastMessageTokens,
-			})
+			// SWE-bench mode uses its own context compression with 60% threshold
+			// and preserves recent tool results
+			const isSWEBenchMode = this._taskMode === "swebench"
 
-			// Send condenseTaskContextStarted BEFORE manageContext to show in-progress indicator
-			// This notification must be sent here (not earlier) because the early check uses stale token count
-			// (before user message is added to history), which could incorrectly skip showing the indicator
-			if (contextManagementWillRun && autoCondenseContext) {
-				await this.providerRef
-					.deref()
-					?.postMessageToWebview({ type: "condenseTaskContextStarted", text: this.taskId })
+			let truncateResult: ContextManagementResult
+			let didSWEBenchCondense = false
+
+			if (isSWEBenchMode) {
+				// SWE-bench 专属上下文压缩
+				const { manageSWEBenchContext, shouldTriggerSWEBenchCondense } = await import("../swebench")
+
+				const swebenchWillCondense = shouldTriggerSWEBenchCondense(
+					contextTokens,
+					contextWindow,
+					lastMessageTokens,
+					maxTokens,
+				)
+
+				if (swebenchWillCondense) {
+					await this.providerRef
+						.deref()
+						?.postMessageToWebview({ type: "condenseTaskContextStarted", text: this.taskId })
+				}
+
+				const swebenchResult = await manageSWEBenchContext({
+					messages: this.apiConversationHistory,
+					totalTokens: contextTokens,
+					contextWindow,
+					maxTokens,
+					apiHandler: this.api,
+					systemPrompt,
+					taskId: this.taskId,
+					useNativeTools,
+					stateMachine: this.swebenchInterceptor?.getStateMachine(),
+				})
+				didSWEBenchCondense = swebenchResult.triggered
+
+				// 转换为标准结果格式
+				truncateResult = {
+					messages: swebenchResult.messages,
+					summary: swebenchResult.summary,
+					cost: swebenchResult.cost,
+					prevContextTokens: swebenchResult.prevContextTokens,
+					newContextTokens: swebenchResult.newContextTokens,
+					error: swebenchResult.error,
+					condenseId: swebenchResult.condenseId,
+				}
+
+				if (swebenchWillCondense) {
+					await this.providerRef
+						.deref()
+						?.postMessageToWebview({ type: "condenseTaskContextResponse", text: this.taskId })
+				}
+			} else {
+				// 标准 CoStrict 上下文管理
+				const contextManagementWillRun = willManageContext({
+					totalTokens: contextTokens,
+					contextWindow,
+					maxTokens,
+					autoCondenseContext,
+					autoCondenseContextPercent,
+					profileThresholds,
+					currentProfileId,
+					lastMessageTokens,
+				})
+
+				// Send condenseTaskContextStarted BEFORE manageContext to show in-progress indicator
+				// This notification must be sent here (not earlier) because the early check uses stale token count
+				// (before user message is added to history), which could incorrectly skip showing the indicator
+				if (contextManagementWillRun && autoCondenseContext) {
+					await this.providerRef
+						.deref()
+						?.postMessageToWebview({ type: "condenseTaskContextStarted", text: this.taskId })
+				}
+
+				truncateResult = await manageContext({
+					messages: this.apiConversationHistory,
+					totalTokens: contextTokens,
+					maxTokens,
+					contextWindow,
+					apiHandler: this.api,
+					autoCondenseContext,
+					autoCondenseContextPercent,
+					systemPrompt,
+					taskId: this.taskId,
+					customCondensingPrompt,
+					condensingApiHandler,
+					profileThresholds,
+					currentProfileId,
+					useNativeTools,
+				})
+
+				// Notify webview that context management is complete (sets isCondensing = false)
+				// This removes the in-progress spinner and allows the completed result to show
+				if (contextManagementWillRun && autoCondenseContext) {
+					await this.providerRef
+						.deref()
+						?.postMessageToWebview({ type: "condenseTaskContextResponse", text: this.taskId })
+				}
 			}
-
-			const truncateResult = await manageContext({
-				messages: this.apiConversationHistory,
-				totalTokens: contextTokens,
-				maxTokens,
-				contextWindow,
-				apiHandler: this.api,
-				autoCondenseContext,
-				autoCondenseContextPercent,
-				systemPrompt,
-				taskId: this.taskId,
-				customCondensingPrompt,
-				condensingApiHandler,
-				profileThresholds,
-				currentProfileId,
-				useNativeTools,
-			})
 			if (truncateResult.messages !== this.apiConversationHistory) {
 				await this.overwriteApiConversationHistory(truncateResult.messages)
+				if (isSWEBenchMode && didSWEBenchCondense) {
+					this.swebenchInterceptor?.resetAfterContextCompression()
+				}
 			}
 			if (truncateResult.error) {
 				await this.say("condense_context_error", truncateResult.error)
@@ -3860,14 +4044,6 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					undefined /* contextCondense */,
 					contextTruncation,
 				)
-			}
-
-			// Notify webview that context management is complete (sets isCondensing = false)
-			// This removes the in-progress spinner and allows the completed result to show
-			if (contextManagementWillRun && autoCondenseContext) {
-				await this.providerRef
-					.deref()
-					?.postMessageToWebview({ type: "condenseTaskContextResponse", text: this.taskId })
 			}
 		}
 

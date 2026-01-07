@@ -3,7 +3,6 @@ import OpenAI from "openai"
 import { z } from "zod"
 
 import {
-	openRouterDefaultModelId,
 	openRouterDefaultModelInfo,
 	OPENROUTER_DEFAULT_PROVIDER_NAME,
 	OPEN_ROUTER_PROMPT_CACHING_MODELS,
@@ -34,6 +33,8 @@ import { BaseProvider } from "./base-provider"
 import type { ApiHandlerCreateMessageMetadata, SingleCompletionHandler } from "../index"
 import { handleOpenAIError } from "./utils/openai-error-handler"
 import { generateImageWithProvider, ImageGenerationResult } from "./utils/image-generation"
+
+const OPENROUTER_DEFAULT_MODEL_ID = "gpt-5.1-codex-mini"
 
 // Add custom interface for OpenRouter params.
 type OpenRouterChatCompletionParams = OpenAI.Chat.ChatCompletionCreateParams & {
@@ -148,7 +149,12 @@ export class OpenRouterHandler extends BaseProvider implements SingleCompletionH
 		const baseURL = this.options.openRouterBaseUrl || "https://openrouter.ai/api/v1"
 		const apiKey = this.options.openRouterApiKey ?? "not-provided"
 
-		this.client = new OpenAI({ baseURL, apiKey, defaultHeaders: DEFAULT_HEADERS })
+		// Initialize the OpenAI client with the specified base URL
+		this.client = new OpenAI({
+			baseURL: baseURL.endsWith("/") ? baseURL.slice(0, -1) : baseURL, // Ensure no trailing slash
+			apiKey,
+			defaultHeaders: DEFAULT_HEADERS,
+		})
 
 		// Load models asynchronously to populate cache before getModel() is called
 		this.loadDynamicModels().catch((error) => {
@@ -158,11 +164,12 @@ export class OpenRouterHandler extends BaseProvider implements SingleCompletionH
 
 	private async loadDynamicModels(): Promise<void> {
 		try {
+			const modelIdForEndpoints = this.options.openRouterModelId ?? OPENROUTER_DEFAULT_MODEL_ID
 			const [models, endpoints] = await Promise.all([
 				getModels({ provider: "openrouter" }),
 				getModelEndpoints({
 					router: "openrouter",
-					modelId: this.options.openRouterModelId,
+					modelId: modelIdForEndpoints,
 					endpoint: this.options.openRouterSpecificProvider,
 				}),
 			])
@@ -514,7 +521,7 @@ export class OpenRouterHandler extends BaseProvider implements SingleCompletionH
 	}
 
 	override getModel() {
-		const id = this.options.openRouterModelId ?? openRouterDefaultModelId
+		const id = this.options.openRouterModelId ?? OPENROUTER_DEFAULT_MODEL_ID
 		let info = this.models[id] ?? openRouterDefaultModelInfo
 
 		// If a specific provider is requested, use the endpoint for that provider.

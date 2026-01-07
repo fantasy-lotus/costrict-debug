@@ -1,10 +1,17 @@
 import type OpenAI from "openai"
 
-const EXECUTE_COMMAND_DESCRIPTION = `Request to execute a CLI command on the system. Use this when you need to perform system operations or run specific commands to accomplish any step in the user's task. You must tailor your command to the user's system and provide a clear explanation of what the command does. For command chaining, use the appropriate chaining syntax for the user's shell. Prefer to execute complex CLI commands over creating executable scripts, as they are more flexible and easier to run. Prefer relative commands and paths that avoid location sensitivity for terminal consistency.
+const EXECUTE_COMMAND_DESCRIPTION = `Request to execute a CLI command on the system.
+
+Use this tool when you need to run commands to gather evidence, run tests, or perform system operations needed to complete the task.
+
+General guidance:
+- Provide a clear explanation of what the command does.
+- For command chaining, use the appropriate chaining syntax for the user's shell.
+- Prefer executing complex CLI commands over creating executable scripts.
 
 Parameters:
-- command: (required) The CLI command to execute. This should be valid for the current operating system. Ensure the command is properly formatted and does not contain any harmful instructions.
-- cwd: (optional) The working directory to execute the command in
+- command: (required) The CLI command to execute.
+- cwd: (required; may be null) The working directory to execute the command in.
 
 Example: Executing npm run dev
 { "command": "npm run dev", "cwd": null }
@@ -17,7 +24,7 @@ Example: Using relative paths
 
 const COMMAND_PARAMETER_DESCRIPTION = `Shell command to execute`
 
-const CWD_PARAMETER_DESCRIPTION = `Optional working directory for the command, relative or absolute`
+const CWD_PARAMETER_DESCRIPTION = `Working directory for the command (string or null)`
 
 export default {
 	type: "function",

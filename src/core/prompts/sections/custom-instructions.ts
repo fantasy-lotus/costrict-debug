@@ -276,6 +276,23 @@ export async function addCustomInstructions(
 ): Promise<string> {
 	const sections = []
 
+	// Add SWE-bench instance-specific guidance if in swebench mode
+	if (mode === "swebench") {
+		const instanceId = process.env.ROO_CODE_EVAL_INSTANCE_ID
+		if (instanceId) {
+			try {
+				// Dynamically import to avoid circular dependencies
+				const { generateInstanceTestDiscoveryGuidance } = await import("../../swebench/instance-prompts")
+				const instanceGuidance = generateInstanceTestDiscoveryGuidance(instanceId)
+				if (instanceGuidance) {
+					sections.push(`\n## Instance-Specific Guidance\n\n${instanceGuidance}`)
+				}
+			} catch (error) {
+				console.warn("[SWEBench] Failed to load instance-specific guidance:", error)
+			}
+		}
+	}
+
 	// Load mode-specific rules if mode is provided
 	let modeRuleContent = ""
 	let usedRuleFile = ""

@@ -11,6 +11,7 @@ import { defaultModeSlug, getModeBySlug } from "../../shared/modes"
 import type { ToolParamName, ToolResponse, ToolUse, McpToolUse } from "../../shared/tools"
 // import { Package } from "../../shared/package"
 import { experiments, EXPERIMENT_IDS } from "../../shared/experiments"
+import { recordSWEBenchToolExecution, getSWEBenchReasoningConfig } from "../swebench"
 
 import { AskIgnoredError } from "../task/AskIgnoredError"
 import { Task } from "../task/Task"
@@ -292,7 +293,12 @@ export async function presentAssistantMessage(cline: Task) {
 				break
 			}
 
-			let content = block.content
+			let content: string | undefined =
+				typeof block.content === "string"
+					? block.content
+					: typeof block.text === "string"
+						? block.text
+						: undefined
 
 			if (content) {
 				// Have to do this for partial and complete since sending
@@ -351,6 +357,10 @@ export async function presentAssistantMessage(cline: Task) {
 						}
 					}
 				}
+			}
+
+			if (!content || content.trim().length === 0) {
+				break
 			}
 
 			await cline.say("text", content, undefined, block.partial)
@@ -545,6 +555,21 @@ export async function presentAssistantMessage(cline: Task) {
 							"(tool did not return anything)"
 					}
 
+					// Record tool execution for SWE-bench state machine (if active) and append guidance.
+					// This must happen BEFORE pushing the tool_result, because native protocol only allows
+					// a single tool_result per tool_use_id.
+					console.log(
+						`[SWEBench-Debug] About to record tool execution from presentAssistantMessage: ${block.name}`,
+					)
+					const guidance = recordSWEBenchToolExecution(
+						block.name as ToolName,
+						block.params as Record<string, unknown>,
+						resultContent,
+					)
+					if (guidance) {
+						resultContent = `${resultContent}\n\n${guidance}`
+					}
+
 					// Add tool_result with text content only
 					cline.userMessageContent.push({
 						type: "tool_result",
@@ -565,14 +590,30 @@ export async function presentAssistantMessage(cline: Task) {
 					// For XML protocol, add as text blocks (legacy behavior)
 					cline.userMessageContent.push({ type: "text", text: `${toolDescription()} Result:` })
 
+					let toolOutput = ""
 					if (typeof content === "string") {
-						cline.userMessageContent.push({
-							type: "text",
-							text: content || "(tool did not return anything)",
-						})
+						toolOutput = content || "(tool did not return anything)"
 					} else {
-						cline.userMessageContent.push(...content)
+						toolOutput =
+							content.map((b) => (b as any).text || "").join("\n") || "(tool did not return anything)"
 					}
+
+					console.log(
+						`[SWEBench-Debug] About to record tool execution from presentAssistantMessage: ${block.name}`,
+					)
+					const guidance = recordSWEBenchToolExecution(
+						block.name as ToolName,
+						block.params as Record<string, unknown>,
+						toolOutput,
+					)
+					if (guidance) {
+						toolOutput = `${toolOutput}\n\n${guidance}`
+					}
+
+					cline.userMessageContent.push({
+						type: "text",
+						text: toolOutput,
+					})
 					if (editTools.includes(block.name) && block.partial === false) {
 						updateCospecMetadata(cline, block?.params?.path)
 					}
@@ -592,6 +633,8 @@ export async function presentAssistantMessage(cline: Task) {
 				}
 				// If toolProtocol is NATIVE and isMultipleNativeToolCallsEnabled is true,
 				// allow multiple tool calls in sequence (don't set didAlreadyUseTool)
+
+				// SWE-bench guidance is appended above while forming the tool_result content.
 			}
 
 			const askApproval = async (
@@ -734,7 +777,7 @@ export async function presentAssistantMessage(cline: Task) {
 				const includedTools = rawIncludedTools?.map((tool) => resolveToolAlias(tool))
 
 				try {
-					validateToolUse(
+					const validationResult = validateToolUse(
 						block.name as ToolName,
 						mode ?? defaultModeSlug,
 						customModes ?? [],
@@ -743,6 +786,11 @@ export async function presentAssistantMessage(cline: Task) {
 						stateExperiments,
 						includedTools,
 					)
+
+					// Apply path mapping if available
+					if (validationResult.mappedParams) {
+						block.params = validationResult.mappedParams
+					}
 				} catch (error) {
 					cline.consecutiveMistakeCount++
 					// For validation errors (unknown tool, tool not allowed for mode), we need to:
@@ -750,7 +798,9 @@ export async function presentAssistantMessage(cline: Task) {
 					// 2. NOT set didAlreadyUseTool = true (the tool was never executed, just failed validation)
 					// This prevents the stream from being interrupted with "Response interrupted by tool use result"
 					// which would cause the extension to appear to hang
-					const errorContent = formatResponse.toolError(error.message, toolProtocol)
+					const errorMessage = error instanceof Error ? error.message : String(error)
+					await cline.say("error", errorMessage)
+					const errorContent = formatResponse.toolError(errorMessage, toolProtocol)
 
 					if (toolProtocol === TOOL_PROTOCOL.NATIVE && toolCallId) {
 						// For native protocol, push tool_result directly without setting didAlreadyUseTool

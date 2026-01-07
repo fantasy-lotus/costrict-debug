@@ -23,6 +23,8 @@ import writeToFile from "./write_to_file"
 export { getMcpServerTools } from "./mcp_server"
 export { convertOpenAIToolToAnthropic, convertOpenAIToolsToAnthropic } from "./converters"
 
+const SWE_EXECUTE_COMMAND_SUFFIX = `\n\nSWE-bench / evaluation environments:\n- Commands may execute inside an evaluation container rather than on the host machine.\n- The repository workspace is typically at /workspace/repo. Prefer using cwd = "/workspace/repo" (or null if the runner sets the correct default).\n- Do NOT attempt to install/upgrade dependencies or access the network unless explicitly permitted by the task.\n`
+
 /**
  * Get native tools array, optionally customizing based on settings.
  *
@@ -30,6 +32,7 @@ export { convertOpenAIToolToAnthropic, convertOpenAIToolsToAnthropic } from "./c
  * @returns Array of native tool definitions
  */
 export function getNativeTools(partialReadsEnabled: boolean = true): OpenAI.Chat.ChatCompletionTool[] {
+	// Backward-compatible signature defaults to generic (mode-agnostic) tool definitions.
 	return [
 		accessMcpResource,
 		apply_diff,
@@ -52,6 +55,29 @@ export function getNativeTools(partialReadsEnabled: boolean = true): OpenAI.Chat
 		updateTodoList,
 		writeToFile,
 	] satisfies OpenAI.Chat.ChatCompletionTool[]
+}
+
+export function getNativeToolsForMode(
+	mode: string | undefined,
+	partialReadsEnabled: boolean = true,
+): OpenAI.Chat.ChatCompletionTool[] {
+	const tools = getNativeTools(partialReadsEnabled)
+	if (mode !== "swebench") {
+		return tools
+	}
+
+	return tools.map((tool) => {
+		if (tool.type !== "function" || tool.function.name !== "execute_command") {
+			return tool
+		}
+		return {
+			...tool,
+			function: {
+				...tool.function,
+				description: `${tool.function.description || ""}${SWE_EXECUTE_COMMAND_SUFFIX}`,
+			},
+		}
+	})
 }
 
 // Backward compatibility: export default tools with line ranges enabled
