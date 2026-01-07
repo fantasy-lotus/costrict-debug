@@ -1,0 +1,213 @@
+{
+	"extension": {
+		"name": "CoStrict"
+	},
+	"storage": {
+		"path_placeholder": "D:\\CostrictCodeStorage",
+		"enter_absolute_path": "请输入绝对路径（例如：D:\\CostrictCodeStorage 或 /home/user/storage）"
+	},
+	"input": {
+		"task_prompt": "CoStrict 应该做什么？"
+	},
+	"window": {
+		"success": {
+			"copy_success": "复制成功"
+		},
+		"error": {
+			"failed_to_get_login_info": "获取登录信息失败，请重新登录以使用代码补全功能。",
+			"login_failed": "登录失败，请重新登录。",
+			"login_expired": "登录已过期，请重新登录。",
+			"failed_to_open_source_file": "无法打开源文件。请检查源文件是否已被删除。",
+			"failed_to_compare_or_adopt": "当前没有打开的文件，无法比较或采用。",
+			"failed_to_display_diff": "无法显示差异。请检查源文件是否已被删除。如果错误持续存在，请联系 CoStrict 客服。",
+			"failed_to_jump_by_path": "跳转失败。文件路径为空。",
+			"failed_to_jump": "跳转失败。",
+			"failed_to_jump_by_path_not_exist": "跳转失败，文件路径不存在。文件路径：",
+			"sign_in_failed": "登录失败：",
+			"please_log_in_first": "请先登录。",
+			"login_again": "重新登录",
+			"login_for_full_features": "登录后可使用完整功能"
+		},
+		"infor": {
+			"enable_disable_function_quick_menu": "启用/禁用\"快捷菜单\"和\"补全\""
+		},
+		"relogin_input": {
+			"title": "重新登录",
+			"placeholder": "Default: https://zgsm.sangfor.com",
+			"error_portocol": "仅支持HTTP/HTTPS协议",
+			"error_url": "无效的 URL 格式"
+		}
+	},
+	"button": {
+		"enable_function_quick_menu": "启用快捷菜单",
+		"disable": "禁用",
+		"enable": "启用",
+		"enable_completion": "启用补全",
+		"enable_quick_menu": "启用快捷菜单",
+		"disable_completion": "禁用补全",
+		"disable_quick_menu": "禁用快捷菜单"
+	},
+	"function": {
+		"completion": "补全",
+		"quick_menu": "快捷菜单"
+	},
+	"completion": {
+		"status": {
+			"loading": {
+				"text": "$(loading~spin) CoStrict - 处理中",
+				"tooltip": "CoStrict - 代码补全 - 等待请求结果"
+			},
+			"complete": {
+				"text": "$(check) CoStrict",
+				"tooltip": "CoStrict - 代码补全 - 已完成"
+			},
+			"fail": {
+				"text": "$(alert) CoStrict - ",
+				"tooltip": "CoStrict - 代码补全 - 失败："
+			},
+			"noSuggest": {
+				"text": "$(check) CoStrict - 无建议",
+				"tooltip": "CoStrict - 代码补全 - 无可用建议"
+			},
+			"enabled": {
+				"tooltip": "CoStrict - 代码补全 - 已启用"
+			},
+			"disabled": {
+				"tooltip": "CoStrict - 代码补全 - 已禁用"
+			},
+			"login": {
+				"text": "$(loading~spin) CoStrict - 登录中..."
+			}
+		},
+		"code": {
+			"401": "请登录",
+			"400": "请求参数错误",
+			"403": "无权限访问",
+			"404": "未找到资源",
+			"413": "上下文过大",
+			"429": "超过API限制",
+			"500": "服务错误",
+			"502": "网关错误",
+			"503": "服务不可用",
+			"504": "网关超时",
+			"aborted": "已取消",
+			"unknown": "未知错误"
+		},
+		"solution": {
+			"401": "请检查登录状态和API密钥",
+			"400": "请检查请求参数",
+			"403": "请检查权限",
+			"404": "请检查请求路径和资源是否存在",
+			"413": "推荐将长上下文拆分成更小的任务处理",
+			"429": "请稍后重试/联系管理员",
+			"500": "请稍后重试/联系管理员",
+			"502": "请稍后重试/联系管理员",
+			"503": "请稍后重试/联系管理员",
+			"504": "请稍后重试/联系管理员",
+			"aborted": "请重试",
+			"unknown": "请联系管理员"
+		}
+	},
+	"command": {
+		"explain": {
+			"name": "解释代码",
+			"tip": "解释代码实现",
+			"input_prompt": "你想让 CoStrict 解释什么？",
+			"input_placeholder": "例如：如何处理错误？"
+		},
+		"add_comment": {
+			"name": "添加注释",
+			"tip": "添加注释到此函数",
+			"input_prompt": "你想让 CoStrict 做什么？",
+			"input_placeholder": "例如：添加注释到代码"
+		},
+		"add_tests": {
+			"name": "生成单元测试",
+			"tip": "为函数生成单元测试",
+			"input_prompt": "你想让 CoStrict 做什么？",
+			"input_placeholder": "例如：生成单元测试"
+		},
+		"code_review": {
+			"name": "代码审查",
+			"tip": "检查代码质量问题并提供建议",
+			"input_prompt": "你想让 CoStrict 做什么？",
+			"input_placeholder": "例如：检查代码质量问题并对代码提出建议"
+		},
+		"add_debug_code": {
+			"name": "添加日志",
+			"tip": "在关键逻辑步骤中添加日志和调试代码来增强故障排除能力",
+			"input_prompt": "你想让 CoStrict 做什么？",
+			"input_placeholder": "例如：在代码的关键逻辑步骤中添加日志和调试代码来增强故障排除能力"
+		},
+		"add_stronger_code": {
+			"name": "增加容错",
+			"tip": "增强鲁棒性，通过添加异常处理和参数验证",
+			"input_prompt": "你想让 CoStrict 做什么？",
+			"input_placeholder": "例如：增强代码鲁棒性，通过添加异常处理和参数验证"
+		},
+		"simplify_code": {
+			"name": "简化代码",
+			"tip": "删除无效代码",
+			"input_prompt": "你想让 CoStrict 做什么？",
+			"input_placeholder": "例如：删除无效代码"
+		},
+		"performance_optimization": {
+			"name": "性能优化",
+			"tip": "提高代码性能，提供修改建议，专注于效率问题",
+			"input_prompt": "你想让 CoStrict 做什么？",
+			"input_placeholder": "例如：提高代码性能，提供修改建议，专注于效率问题"
+		},
+		"shenma_instruct_set": {
+			"tip": "CoStrict 指令集",
+			"input_prompt": "你想让 CoStrict 做什么？",
+			"input_placeholder": "例如：添加注释到代码"
+		}
+	},
+	"review": {
+		"tip": {
+			"codebase_sync": "代码同步中，请稍候，Code Review 即将开始",
+			"codebase_sync_failed": "代码同步失败，请稍后重试。",
+			"codebase_sync_ignore_file": "该类型文件无需做 CodeReview，本次任务不执行。",
+			"file_check": "文件检查中",
+			"login_expired": "登录已过期，请重新登录。",
+			"service_unavailable": "服务不可用，请稍后重试。",
+			"api_provider_not_support": "当前 API 提供商不支持 Code Review功能，请切换到 CoStrict API 提供商。",
+			"task_timeout": "任务执行超时，已自动取消",
+			"task_cancelled": "任务已取消，请新建任务进行 Code Review",
+			"get_review_result_failed": "暂时无法获取审查结果，请重试",
+			"no_changed_files": "没有变更文件，请确保当前工作空间是 git 仓库，并且有变更文件。",
+			"new_commit_notification": "你提交了：{{commitMessage}}，是否进行 review ？"
+		},
+		"statusbar": {
+			"login_expired": "获取登录信息失败，请重新登录以使用 Code Review 功能"
+		},
+		"comment": {
+			"detail_label": "Code Review 详情"
+		}
+	},
+	"errors": {
+		"no_assistant_responses": "API返回异常：模型没有回复任何消息。这可能是API或模型出了问题。",
+		"claudeCode": {
+			"notFound": "找不到 Claude Code 可执行文件 '{{claudePath}}'。\n\n请安装 Claude Code CLI：\n1. 访问 {{installationUrl}} 下载 Claude Code\n2. 按照操作系统的安装说明进行操作\n3. 确保 'claude' 命令在 PATH 中可用\n4. 或者在 CoStrict 设置中的 'Claude Code 路径' 下设置自定义路径\n\n原始错误：{{originalError}}"
+		}
+	},
+	"warnings": {
+		"auto_import_failed": "自动导入 CoStrict 设置失败：{{error}}"
+	},
+	"info": {
+		"auto_import_success": "已自动导入 CoStrict 设置：{{filename}}"
+	},
+	"mdm": {
+		"errors": {
+			"cloud_auth_required": "您的组织需要 CoStrict Cloud 身份验证。请登录以继续。",
+			"organization_mismatch": "您必须使用组织的 CoStrict Cloud 账户进行身份验证。"
+		}
+	},
+	"history": {
+		"warn": "历史任务缓存超过 {{size}}，您可以手动清理历史记录以释放磁盘空间",
+		"viewAllHistory": "查看所有历史记录"
+	},
+	"notification": {
+		"confirm": "确定"
+	}
+}

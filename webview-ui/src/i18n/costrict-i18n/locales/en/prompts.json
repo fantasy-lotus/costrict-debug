@@ -1,0 +1,81 @@
+{
+	"modes": {
+		"createModeHelpText": "Hit the + to create a new custom mode, or just ask CoStrict in chat to create one for you!"
+	},
+	"roleDefinition": {
+		"description": "Define CoStrict's expertise and personality for this mode. This description shapes how CoStrict presents itself and approaches tasks."
+	},
+	"globalCustomInstructions": {
+		"description": "These instructions apply to all modes. They provide a base set of behaviors that can be enhanced by mode-specific instructions below.\nIf you would like CoStrict to think and speak in a different language than your editor display language ({{language}}), you can specify it here."
+	},
+	"supportPrompts": {
+		"types": {
+			"ENHANCE": {
+				"description": "Use prompt enhancement to get tailored suggestions or improvements for your inputs. This ensures CoStrict understands your intent and provides the best possible responses. Available via the ✨ icon in chat."
+			},
+			"ZGSM_ADD_COMMENT": {
+				"label": "Add code comments",
+				"description": "Add comment explanations to code, available in code actions (lightbulb icon in editor) and editor context menu (right click on selected code)."
+			},
+			"ZGSM_CODE_REVIEW": {
+				"label": "Code review",
+				"description": "Check code quality issues and provide improvement suggestions, available in code actions (lightbulb icon in editor) and editor context menu (right click on selected code)."
+			},
+			"ZGSM_ADD_DEBUG_CODE": {
+				"label": "Add debug code",
+				"description": "Enhance code debuggability by adding logs and debug code, available in code actions (lightbulb icon in editor) and editor context menu (right click on selected code)."
+			},
+			"ZGSM_ADD_STRONG_CODE": {
+				"label": "Strengthen code robustness",
+				"description": "Improve code robustness by adding exception handling and parameter validation, available in code actions (lightbulb icon in editor) and editor context menu (right click on selected code)."
+			},
+			"ZGSM_SIMPLIFY_CODE": {
+				"label": "Simplify code",
+				"description": "Remove invalid parts and simplify code structure, available in code actions (lightbulb icon in editor) and editor context menu (right click on selected code)."
+			},
+			"ZGSM_PERFORMANCE": {
+				"label": "Performance optimization",
+				"description": "Provide code performance optimization suggestions, focusing on efficiency issues, available in code actions (lightbulb icon in editor) and editor context menu (right click on selected code)."
+			},
+			"ZGSM_ADD_TEST": {
+				"label": "Add tests",
+				"description": "Generate unit tests for code, available in code actions (lightbulb icon in editor) and editor context menu (right click on selected code)."
+			},
+			"ZGSM_EXPLAIN": {
+				"label": "Explain Code",
+				"description": "Get detailed explanations of code snippets, functions, or entire files. Useful for understanding complex code or learning new patterns. Available in code actions (lightbulb icon in the editor) and the editor context menu (right-click on selected code)."
+			},
+			"WORKFLOW_TASK_RUN": {
+				"label": "Run Workflow Task",
+				"description": "Run a workflow task"
+			},
+			"WORKFLOW_TASK_RETRY": {
+				"label": "Retry Workflow Task",
+				"description": "Retry a workflow task"
+			},
+			"WORKFLOW_RQS_UPDATE": {
+				"label": "Requirements Update",
+				"description": "When the requirement document is confirmed to be updated, Coctrict will update the associated design document"
+			},
+			"WORKFLOW_DESIGN_UPDATE": {
+				"label": "Design Update",
+				"description": "When the design document is confirmed to be updated, CoStrict will update the associated tasks document"
+			},
+			"WORKFLOW_TASK_RUN_TESTS": {
+				"label": "Test Case Update",
+				"description": "When the test case document is confirmed to be updated, CoStrict will update the associated tasks document"
+			}
+		}
+	},
+	"createModeDialog": {
+		"roleDefinition": {
+			"description": "Define CoStrict's expertise and personality for this mode."
+		},
+		"whenToUse": {
+			"description": "Guidance for CoStrict for when this mode should be used. This helps the Orchestrator choose the right mode for a task."
+		}
+	},
+	"whenToUse": {
+		"description": "Guidance for CoStrict for when this mode should be used. This helps the Orchestrator choose the right mode for a task."
+	}
+}

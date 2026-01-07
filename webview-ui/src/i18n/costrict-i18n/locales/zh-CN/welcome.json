@@ -1,0 +1,30 @@
+{
+	"getZgsmApiKey": "登录 CoStrict",
+	"introduction": "<strong>CoStrict 严肃开发的AI智能伙伴</strong>，开源免费，可私有化部署，重视效果可控、质量为先，提供AI Agent、AI CodeReview、AI Completion三大核心能力，登录即可体验。",
+	"greeting": "你好，我是 CoStrict！",
+	"telemetry": {
+		"title": "帮助改进 CoStrict",
+		"anonymousTelemetry": "发送匿名的错误和使用数据，以帮助我们修复错误并改进扩展程序。不会涉及代码、提示词或个人隐私信息。"
+	},
+	"chooseProvider": "开始使用需要 LLM 提供商：",
+	"vibe": {
+		"description": "氛围编程，需求澄清与代码生成交替进行。适配快速开发或简单任务，若使用者具备较强提示词能力，可高效产出高质量代码。"
+	},
+	"strict": {
+		"description": "严肃编程，遵从「需求澄清→设计→任务拆解→测试自校验自修复」流程。适配复杂任务 (Token消耗量大)。"
+	},
+	"plan": {
+		"description": "严肃编程，遵从「计划制定→分步实施」流程。适用于渐进式开发和任务管理，确保项目有序推进。"
+	},
+	"developmentMode": "开发模式",
+	"commonFeatures": "常用功能",
+	"providerSignup": {
+		"rooCloudProvider": "CoStrict 提供商",
+		"rooCloudDescription": "使用 CoStrict 最简单的方式。低成本精选的免费和付费模型组合",
+		"learnMore": "了解更多",
+		"useAnotherProvider": "使用其他提供商",
+		"useAnotherProviderDescription": "输入 API 密钥即可开始。",
+		"noApiKeys": "不想处理密钥？选择 CoStrict 提供商吧。",
+		"getStarted": "开始使用"
+	}
+}

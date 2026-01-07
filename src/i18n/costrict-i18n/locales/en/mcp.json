@@ -1,0 +1,5 @@
+{
+	"errors": {
+		"invalidJsonArgument": "CoStrict tried to use {{toolName}} with an invalid JSON argument. Retrying..."
+	}
+}

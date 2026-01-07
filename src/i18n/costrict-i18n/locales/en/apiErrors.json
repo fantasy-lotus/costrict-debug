@@ -1,0 +1,61 @@
+{
+	"status": {
+		"401": "Authentication expired\nIssued at: {{iat}}\nExpired at: {{exp}}",
+		"400": "Invalid request",
+		"403": "Forbidden access",
+		"404": "Resource not found",
+		"413": "Payload Too Large",
+		"429": "Too many requests or exceeded API quota",
+		"500": "Internal server error",
+		"502": "Gateway error, service temporarily unavailable",
+		"503": "Service temporarily unavailable",
+		"504": "Gateway timeout",
+		"old_mode_token": "The old token is incompatible. Please log in again after the upgrade.",
+		"undefined": "Network connection error",
+		"unknown": "Unknown error"
+	},
+	"solution": {
+		"401": "1. Click account icon  -> Click [Re-login]\n2. Contact the administrator",
+		"400": "1. End the current task and start a new one\n2. Try a different model\n3. Contact the administrator",
+		"403": "1. Check permission settings\n2. Try a different model\n3. Contact the administrator",
+		"404": "1. Check if the request path or resource exists\n2. Contact the administrator",
+		"413": "1. Split tasks into smaller for processing\n2. Try a different model\n3. Contact the administrator",
+		"429": "1. Please try again later\n2. End the current task and start a new one\n3. Contact the administrator",
+		"500": "1. Please try again later\n2. Try switching models\n3. Contact the administrator",
+		"502": "1. Please try again later\n2. Try switching models\n3. Contact the administrator",
+		"503": "1. Please try again later\n2. Try switching models\n3. Contact the administrator",
+		"504": "1. Please try again later\n2. Try switching models\n3. Contact the administrator",
+		"ai-gateway": {
+			"star_required": "Please go to https://github.com/zgsm-ai/costrict and star the project before continuing",
+			"pleaseStarProject": "Please star the project first,",
+			"howToStar": "How to star",
+			"insufficientCredits": "Insufficient remaining credit quota",
+			"quotaAcquisition": "Quota acquisition"
+		},
+		"quota-check": {
+			"checkRemainingQuota": "Not sure about your remaining quota? Please visit",
+			"creditUsageStats": "Credit usage statistics",
+			"viewDetails": "View details"
+		},
+		"activitiesStr": {
+			"participate": "You can participate ",
+			"operationalActivities": "Operational activities",
+			"or": "or",
+			"purchaseQuota": "Purchase quota",
+			"getCreditLimit": "Get credit limit"
+		},
+		"undefined": "1. Check your network connection\n2. Check your proxy/firewall\n3. Contact the administrator",
+		"unknown": "1. Please try again later\n2. Try switching models\n3. Contact the administrator"
+	},
+	"request": {
+		"failed": "Request failed, please try again.",
+		"http_code": "HTTP error code:",
+		"error_details": "Error details:",
+		"request_id": "Request ID:",
+		"solution": "Solution:",
+		"retry_attempt": "Retry attempts:",
+		"retry_in_seconds": "Retrying in {{seconds}} seconds...",
+		"retrying_now": "Retrying now...",
+		"current_ask_promise_ignored": "Operation interrupted or overridden, please retry."
+	}
+}

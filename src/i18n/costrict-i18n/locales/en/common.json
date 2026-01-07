@@ -1,0 +1,213 @@
+{
+	"extension": {
+		"name": "CoStrict"
+	},
+	"storage": {
+		"path_placeholder": "D:\\CostrictCodeStorage",
+		"enter_absolute_path": "Please enter an absolute path (e.g. D:\\CostrictCodeStorage or /home/user/storage)"
+	},
+	"input": {
+		"task_prompt": "What should CoStrict do?"
+	},
+	"window": {
+		"success": {
+			"copy_success": "Copy success"
+		},
+		"error": {
+			"failed_to_get_login_info": "Failed to get login information. Please log in again to use the completion service.",
+			"login_failed": "Login failed, please log in again.",
+			"login_expired": "Login has expired, please log in again.",
+			"failed_to_open_source_file": "Failed to open the source file. Please check if the source file has been deleted.",
+			"failed_to_compare_or_adopt": "There is no open file currently, unable to compare or adopt.",
+			"failed_to_display_diff": "Failed to display the diff. Please check if the source file has been deleted. If the error persists, please contact the CoStrict customer service.",
+			"failed_to_jump_by_path": "Jump failed. The file path is empty.",
+			"failed_to_jump": "Jump failed.",
+			"failed_to_jump_by_path_not_exist": "Jump failed, The file path does not exist. file path: ",
+			"sign_in_failed": "Sign in failed: ",
+			"please_log_in_first": "Please log in first.",
+			"login_again": "login again",
+			"login_for_full_features": "Full functionality available after login"
+		},
+		"infor": {
+			"enable_disable_function_quick_menu": "Enable/Disable \"Quick Menu\" and \"Auto Completion\""
+		},
+		"relogin_input": {
+			"title": "Log in again",
+			"placeholder": "Default: https://zgsm.sangfor.com",
+			"error_portocol": "Only HTTP/HTTPS protocols are supported",
+			"error_url": "Invalid URL format"
+		}
+	},
+	"button": {
+		"enable_function_quick_menu": "Enable Quick Menu",
+		"disable": "Disable ",
+		"enable": "Enable ",
+		"enable_completion": "Enable Auto Completion",
+		"enable_quick_menu": "Enable Quick Menu",
+		"disable_completion": "Disable Auto Completion",
+		"disable_quick_menu": "Disable Quick Menu"
+	},
+	"function": {
+		"completion": "Auto Completion",
+		"quick_menu": "Quick Menu"
+	},
+	"command": {
+		"explain": {
+			"name": "Explain Code",
+			"tip": "Explain code implementation",
+			"input_prompt": "What would you like CoStrict to explain?",
+			"input_placeholder": "E.g. How does the error handling work?"
+		},
+		"add_comment": {
+			"name": "Add Comments",
+			"tip": "Add comments to this function",
+			"input_prompt": "What would you like CoStrict to do?",
+			"input_placeholder": "E.g. Add comments to the code"
+		},
+		"add_tests": {
+			"name": "Generate Unit Tests",
+			"tip": "Generate unit tests for this function",
+			"input_prompt": "What would you like CoStrict to do?",
+			"input_placeholder": "E.g. Generate unit tests for this function"
+		},
+		"code_review": {
+			"name": "Code Review",
+			"tip": "Check for code quality issues and provide suggestions",
+			"input_prompt": "What would you like CoStrict to do?",
+			"input_placeholder": "E.g. Check for code quality issues and provide suggestions to the code"
+		},
+		"add_debug_code": {
+			"name": "Add Debug Code",
+			"tip": "Enhance troubleshooting capabilities by adding logs and debug code to key logic steps",
+			"input_prompt": "What would you like CoStrict to do?",
+			"input_placeholder": "E.g. Enhance troubleshooting capabilities by adding logs and debug code to key logic steps to the code"
+		},
+		"add_stronger_code": {
+			"name": "Add Error Handling",
+			"tip": "Enhance robustness by adding exception handling and parameter validation",
+			"input_prompt": "What would you like CoStrict to do?",
+			"input_placeholder": "E.g. Enhance robustness by adding exception handling and parameter validation to the code"
+		},
+		"simplify_code": {
+			"name": "Simplify Code",
+			"tip": "Remove ineffective code",
+			"input_prompt": "What would you like CoStrict to do?",
+			"input_placeholder": "E.g. Remove ineffective code"
+		},
+		"performance_optimization": {
+			"name": "Performance Optimization",
+			"tip": "Improve code performance, provide modification suggestions, focus on efficiency issues",
+			"input_prompt": "What would you like CoStrict to do?",
+			"input_placeholder": "E.g. Improve code performance, provide modification suggestions, ffocus on efficiency issues to the following code"
+		},
+		"shenma_instruct_set": {
+			"tip": "CoStrict Instruction Set",
+			"input_prompt": "What would you like CoStrict to do?",
+			"input_placeholder": "E.g. Add comments to the code"
+		}
+	},
+	"completion": {
+		"status": {
+			"loading": {
+				"text": "$(loading~spin) CoStrict - In Progress",
+				"tooltip": "CoStrict - Code Completion - Waiting for request results"
+			},
+			"complete": {
+				"text": "$(check) CoStrict",
+				"tooltip": "CoStrict - Code Completion - Completed"
+			},
+			"fail": {
+				"text": "$(alert) CoStrict - ",
+				"tooltip": "CoStrict - Code Completion - Failed: "
+			},
+			"noSuggest": {
+				"text": "$(check) CoStrict - No Suggestions",
+				"tooltip": "CoStrict - Code Completion - No Suggestions Available"
+			},
+			"enabled": {
+				"tooltip": "CoStrict - Code Completion - Enabled"
+			},
+			"disabled": {
+				"tooltip": "CoStrict - Code Completion - Disabled"
+			},
+			"login": {
+				"text": "$(loading~spin) CoStrict - login..."
+			}
+		},
+		"code": {
+			"401": "Please login",
+			"400": "Request parameter error",
+			"403": "Forbidden access",
+			"404": "Resource not found",
+			"413": "Payload Too Large",
+			"429": "API rate limit exceeded",
+			"500": "Service error",
+			"502": "Gateway error",
+			"503": "Service unavailable",
+			"504": "Gateway timeout",
+			"aborted": "Aborted",
+			"unknown": "Unknown error"
+		},
+		"solution": {
+			"401": "Please check login status and API key",
+			"400": "Please check request parameters",
+			"403": "Please check permissions",
+			"404": "Please check request path and resource existence",
+			"413": "Split tasks into smaller for processing",
+			"429": "Please try again later/contact administrator",
+			"500": "Please try again later/contact administrator",
+			"502": "Please try again later/contact administrator",
+			"503": "Please try again later/contact administrator",
+			"504": "Please try again later/contact administrator",
+			"aborted": "Please try again",
+			"unknown": "Please contact administrator"
+		}
+	},
+	"review": {
+		"tip": {
+			"codebase_sync": "CodeBase synchronization in progress, please wait. Code Review will start shortly.",
+			"codebase_sync_failed": "CodeBase synchronization failed, please try again later.",
+			"codebase_sync_ignore_file": "This type of file does not need to be reviewed, the current task will not be executed.",
+			"file_check": "File checking in progress",
+			"login_expired": "Login has expired, please log in again.",
+			"service_unavailable": "Service unavailable, please try again later.",
+			"api_provider_not_support": "The current API provider does not support the Code Review function, please switch to the CoStrict API provider.",
+			"task_timeout": "Task execution timed out, has been automatically canceled",
+			"task_cancelled": "Task has been cancelled, please create a new task for Code Review",
+			"get_review_result_failed": "Unable to obtain review results, please try again",
+			"no_changed_files": "No changed files, please ensure that the current workspace is a git repository and has changed files.",
+			"new_commit_notification": "You committed: {{commitMessage}}, whether to perform review?"
+		},
+		"statusbar": {
+			"login_expired": "Failed to get login information. Please log in again to use the code review."
+		},
+		"comment": {
+			"detail_label": "Code Review Details"
+		}
+	},
+	"errors": {
+		"no_assistant_responses": "Unexpected API Response: The language model did not provide any assistant messages. This may indicate an issue with the API or the model's output.",
+		"claudeCode": {
+			"notFound": "Claude Code executable '{{claudePath}}' not found.\n\nPlease install Claude Code CLI:\n1. Visit {{installationUrl}} to download Claude Code\n2. Follow the installation instructions for your operating system\n3. Ensure the 'claude' command is available in your PATH\n4. Alternatively, configure a custom path in CoStrict settings under 'Claude Code Path'\n\nOriginal error: {{originalError}}"
+		}
+	},
+	"warnings": {
+		"auto_import_failed": "Failed to auto-import CoStrict settings: {{error}}"
+	},
+	"info": {
+		"auto_import_success": "CoStrict settings automatically imported from {{filename}}"
+	},
+	"mdm": {
+		"errors": {
+			"cloud_auth_required": "Your organization requires CoStrict Cloud authentication. Please sign in to continue.",
+			"organization_mismatch": "You must be authenticated with your organization's CoStrict Cloud account."
+		}
+	},
+	"history": {
+		"warn": "History task cache exceeds {{size}}, you can manually clean up history to free disk space",
+		"viewAllHistory": "View all tasks"
+	},
+	"notification": {
+		"confirm": "Confirm"
+	}
+}
