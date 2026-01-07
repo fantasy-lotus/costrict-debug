@@ -308,6 +308,7 @@ export const isGlobalStateKey = (key: string): key is Keys<GlobalState> =>
 // Default settings when running evals (unless overridden).
 export const EVALS_SETTINGS: RooCodeSettings = {
 	apiProvider: "openrouter",
+	toolProtocol: "xml",
 	openRouterUseMiddleOutTransform: false,
 	zgsmCodeMode: "vibe",
 	lastShownAnnouncementId: "jul-09-2025-3-23-0",
@@ -377,7 +378,7 @@ export const EVALS_SETTINGS: RooCodeSettings = {
 	language: "en",
 	telemetrySetting: "disabled",
 
-	mcpEnabled: false,
+	mcpEnabled: true,
 
 	mode: "code", // "architect",
 

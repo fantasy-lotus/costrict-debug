@@ -2,6 +2,7 @@ import * as fs from "fs"
 import * as fsp from "fs/promises"
 import * as path from "path"
 import * as os from "node:os"
+import * as crypto from "node:crypto"
 
 import pWaitFor from "p-wait-for"
 import { execa } from "execa"
@@ -14,6 +15,8 @@ import {
 	IpcMessageType,
 	EVALS_SETTINGS,
 	type ToolUsage,
+	type ProviderName,
+	isProviderName,
 } from "@roo-code/types"
 import { IpcClient } from "@roo-code/ipc"
 
@@ -33,10 +36,129 @@ import { Logger, getTag, isDockerContainer } from "./utils.js"
 import { redisClient, getPubSubKey, registerRunner, deregisterRunner } from "./redis.js"
 import { runUnitTest } from "./runUnitTest.js"
 
+function resolveExtensionDevPath(): string {
+	const fromEnv = process.env.ROO_CODE_EXTENSION_DEV_PATH
+	if (fromEnv) return fromEnv
+
+	const candidates = [path.resolve(process.cwd(), "src"), path.resolve(process.cwd(), "..", "src")]
+	for (const candidate of candidates) {
+		if (fs.existsSync(path.join(candidate, "package.json"))) {
+			return candidate
+		}
+	}
+	return candidates[0]!
+}
+
 class SubprocessTimeoutError extends Error {
 	constructor(timeout: number) {
 		super(`Subprocess timeout after ${timeout}ms`)
 		this.name = "SubprocessTimeoutError"
+	}
+}
+
+async function ensureSwebenchSequentialThinkingMcpServer(workspacePath: string, logger: Logger): Promise<void> {
+	try {
+		const rooDir = path.join(workspacePath, ".roo")
+		const mcpPath = path.join(rooDir, "mcp.json")
+
+		await fsp.mkdir(rooDir, { recursive: true })
+
+		let existing: unknown = undefined
+		try {
+			const raw = await fsp.readFile(mcpPath, "utf-8")
+			existing = JSON.parse(raw)
+		} catch {
+			// ignore
+		}
+
+		const nextConfig: Record<string, unknown> =
+			existing && typeof existing === "object" ? (existing as Record<string, unknown>) : {}
+		if (!nextConfig.mcpServers || typeof nextConfig.mcpServers !== "object") {
+			nextConfig.mcpServers = {} as Record<string, unknown>
+		}
+
+		const mcpServers = nextConfig.mcpServers as Record<string, unknown>
+		mcpServers["sequential-thinking"] = {
+			type: "stdio",
+			command: "npx",
+			args: ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+			alwaysAllow: ["sequentialthinking"],
+			disabledTools: [],
+		}
+
+		await fsp.writeFile(mcpPath, JSON.stringify(nextConfig, null, 2), "utf-8")
+		logger.info(`ensured swebench MCP config at ${mcpPath}`)
+	} catch (error) {
+		logger.error("failed to ensure swebench MCP config:", error)
+	}
+}
+
+async function copyVscodeAgentLogs({
+	userDataDir,
+	destDir,
+	prefix,
+	messageLogPath,
+	logger,
+}: {
+	userDataDir: string
+	destDir: string
+	prefix: string
+	messageLogPath?: string
+	logger: Logger
+}): Promise<void> {
+	const logsRoot = path.join(userDataDir, "logs")
+	let latestLogDir: string | undefined
+
+	try {
+		const entries = await fsp.readdir(logsRoot, { withFileTypes: true })
+		const dirs = entries
+			.filter((e) => e.isDirectory())
+			.map((e) => e.name)
+			.sort()
+		if (dirs.length > 0) {
+			latestLogDir = path.join(logsRoot, dirs[dirs.length - 1]!, "window1")
+		}
+	} catch (error) {
+		logger.error(`failed to list VS Code logsRoot=${logsRoot}:`, error)
+		return
+	}
+
+	if (!latestLogDir) {
+		logger.error(`no VS Code logs found under ${logsRoot}`)
+		return
+	}
+
+	// exthost.log
+	try {
+		const src = path.join(latestLogDir, "exthost", "exthost.log")
+		await fsp.copyFile(src, path.join(destDir, `${prefix}_exthost.log`))
+	} catch (error) {
+		logger.info(`could not copy exthost.log from latest VS Code logs:`, error)
+	}
+
+	// output channel logs (e.g. 1-CoStrict.log)
+	try {
+		const exthostDir = path.join(latestLogDir, "exthost")
+		const entries = await fsp.readdir(exthostDir, { withFileTypes: true })
+		const outputDirs = entries
+			.filter((e) => e.isDirectory() && e.name.startsWith("output_logging_"))
+			.map((e) => e.name)
+			.sort()
+		if (outputDirs.length > 0) {
+			const outputDir = path.join(exthostDir, outputDirs[outputDirs.length - 1]!)
+			const outputLog = path.join(outputDir, "1-CoStrict.log")
+			await fsp.copyFile(outputLog, path.join(destDir, `${prefix}_CoStrict.log`))
+		}
+	} catch (error) {
+		logger.info(`could not copy output channel log from latest VS Code logs:`, error)
+	}
+
+	// Optional: extension file log (only present when logging enabled)
+	try {
+		const src = messageLogPath || path.join(os.tmpdir(), "costrict-messages.log")
+		await fsp.copyFile(src, path.join(destDir, `${prefix}_costrict-messages.log`))
+	} catch {
+		// ignore
 	}
 }
 
@@ -52,6 +174,8 @@ async function copyConversationHistory({
 	exercise,
 	iteration,
 	logger,
+	containerized: _containerized,
+	userDataDir,
 }: {
 	rooTaskId: string
 	logDir: string
@@ -59,10 +183,49 @@ async function copyConversationHistory({
 	exercise: string
 	iteration: number
 	logger: Logger
+	containerized: boolean
+	userDataDir: string
 }): Promise<void> {
-	// VS Code extension global storage path within the container
-	const extensionStoragePath = "/roo/.vscode/User/globalStorage/rooveterinaryinc.roo-cline"
-	const taskStoragePath = path.join(extensionStoragePath, "tasks", rooTaskId)
+	const taskStoragePath = await (async () => {
+		const directPath = path.join(
+			userDataDir,
+			"User",
+			"globalStorage",
+			"rooveterinaryinc.roo-cline",
+			"tasks",
+			rooTaskId,
+		)
+		try {
+			await fsp.access(path.join(directPath, "api_conversation_history.json"))
+			return directPath
+		} catch {
+			// continue
+		}
+
+		const globalStorageHome = path.join(userDataDir, "User", "globalStorage")
+		try {
+			const entries = await fsp.readdir(globalStorageHome, { withFileTypes: true })
+			for (const entry of entries) {
+				if (!entry.isDirectory()) continue
+				const candidate = path.join(globalStorageHome, entry.name, "tasks", rooTaskId)
+				try {
+					await fsp.access(path.join(candidate, "api_conversation_history.json"))
+					return candidate
+				} catch {
+					// continue
+				}
+			}
+		} catch (error) {
+			logger.error(`failed to scan VS Code globalStorageHome at ${globalStorageHome}:`, error)
+		}
+
+		return undefined
+	})()
+
+	if (!taskStoragePath) {
+		logger.error(`could not find task storage path for rooTaskId=${rooTaskId}`)
+		return
+	}
 
 	const filesToCopy = ["api_conversation_history.json", "ui_messages.json"]
 
@@ -89,6 +252,431 @@ async function copyConversationHistory({
 				logger.error(`failed to copy ${filename}:`, error)
 			}
 		}
+	}
+}
+
+export const runSweTask = async ({
+	instanceId,
+	workspacePath,
+	prompt,
+	apiProvider,
+	mode,
+	zgsmCodeMode,
+	timeout = 5 * 60 * 1000, // 5 minutes default
+	logger,
+}: {
+	instanceId: string
+	workspacePath: string
+	prompt: string
+	apiProvider?: string
+	mode?: string
+	zgsmCodeMode?: string
+	timeout?: number
+	logger?: Logger
+}) => {
+	const containerized = isDockerContainer()
+	const effectiveMode = (mode || "").trim() || "swebench"
+	const runKey = `${Date.now()}-${process.pid}`
+	const messageLogPath = path.join(os.tmpdir(), `costrict-messages-${instanceId}-${runKey}.log`)
+	const socketId = crypto.createHash("sha1").update(`${instanceId}-${runKey}`).digest("hex").slice(0, 16)
+	const ipcSocketPath = path.resolve("/tmp", `swe-${socketId}.sock`)
+	const env = { ...process.env, ROO_CODE_IPC_SOCKET_PATH: ipcSocketPath, NODE_ENV: "production" }
+	const controller = new AbortController()
+	const cancelSignal = controller.signal
+
+	logger =
+		logger ||
+		new Logger({
+			logDir: containerized ? `/var/log/evals/swe` : `/tmp/evals/swe`,
+			filename: `${instanceId}.log`,
+			tag: `runSweTask:${instanceId}`,
+		})
+
+	type CostrictAuthFile = { access_token?: unknown; base_url?: unknown }
+	const loadCostrictAuth = (): { accessToken: string; baseUrl?: string } => {
+		const candidates = [
+			path.join(os.homedir(), ".costrict", "share", "auth.json"),
+			"/root/.costrict/share/auth.json",
+			"/roo/.costrict/share/auth.json",
+		]
+
+		for (const candidate of candidates) {
+			try {
+				if (!fs.existsSync(candidate)) {
+					continue
+				}
+				const raw = fs.readFileSync(candidate, "utf-8")
+				const parsed = JSON.parse(raw) as CostrictAuthFile
+				const accessToken = typeof parsed.access_token === "string" ? parsed.access_token.trim() : ""
+				const baseUrl = typeof parsed.base_url === "string" ? parsed.base_url.trim() : undefined
+				if (accessToken) {
+					return { accessToken, baseUrl }
+				}
+			} catch {
+				// ignore and try next
+			}
+		}
+
+		throw new Error(
+			"CoStrict auth not found. Please login to CoStrict (zgsm) once in VSCode to generate ~/.costrict/share/auth.json.",
+		)
+	}
+
+	if (effectiveMode === "swebench") {
+		await ensureSwebenchSequentialThinkingMcpServer(workspacePath, logger)
+	}
+
+	const extensionDevPath = resolveExtensionDevPath()
+	const userDataDir = path.join(os.tmpdir(), `swe-vscode-userdata-${instanceId}-${runKey}`)
+	const extensionsDir = containerized
+		? undefined
+		: path.join(os.tmpdir(), `swe-vscode-extensions-${instanceId}-${runKey}`)
+	const vscodeLogsDir = path.join(userDataDir, "logs")
+	let codeCommand = containerized
+		? `xvfb-run --auto-servernum --server-num=1 code --wait --log trace --disable-workspace-trust --disable-gpu --disable-lcd-text --no-sandbox --user-data-dir ${userDataDir} --password-store="basic" -n ${workspacePath}`
+		: `code --log trace --disable-workspace-trust --user-data-dir ${userDataDir} --extensions-dir ${extensionsDir} --extensionDevelopmentPath ${extensionDevPath} -n ${workspacePath}`
+
+	// Prepend env vars directly to command line so they are inherited by VS Code extension host
+	// (execa's env option may not propagate to child processes spawned by `code` CLI)
+	codeCommand = `ROO_CODE_IPC_SOCKET_PATH=${ipcSocketPath} ROO_CODE_MESSAGE_LOG_PATH=${messageLogPath} ROO_CODE_EVAL_INSTANCE_ID=${instanceId} ROO_CODE_EVAL_RUN_KEY=${runKey} ${codeCommand}`
+	if (process.env.ROO_CODE_CLOUD_TOKEN) {
+		codeCommand = `ROO_CODE_CLOUD_TOKEN=${process.env.ROO_CODE_CLOUD_TOKEN} ${codeCommand}`
+	}
+
+	logger.info(`runKey=${runKey}`)
+	logger.info(`ipcSocketPath=${ipcSocketPath}`)
+	logger.info(`userDataDir=${userDataDir}`)
+	logger.info(`extensionsDir=${extensionsDir || "(none)"}`)
+	logger.info(codeCommand)
+
+	await new Promise((resolve) => setTimeout(resolve, 10_000))
+
+	const subprocess = execa({ env, shell: "/bin/bash", cancelSignal })`${codeCommand}`
+	if (subprocess.stdout) {
+		subprocess.stdout.on("data", (data) => {
+			const text = String(data)
+			logger?.info(`[code stdout] ${text.length > 4000 ? text.slice(0, 4000) + "..." : text}`)
+		})
+	}
+	if (subprocess.stderr) {
+		subprocess.stderr.on("data", (data) => {
+			const text = String(data)
+			logger?.error(`[code stderr] ${text.length > 4000 ? text.slice(0, 4000) + "..." : text}`)
+		})
+	}
+	subprocess.catch((error) => {
+		logger?.error("code subprocess failed:", error)
+	})
+	let client: IpcClient | undefined
+	let attempts = 25
+
+	while (true) {
+		try {
+			client = new IpcClient(ipcSocketPath)
+			await pWaitFor(() => client!.isReady, { interval: 250, timeout: 3_000 })
+			logger.info(`connected to IPC socket -> ${ipcSocketPath}`)
+			break
+		} catch (_error) {
+			client?.disconnect()
+			attempts--
+			logger.info(`waiting for IPC socket -> ${ipcSocketPath} (attempts left: ${attempts})`)
+
+			if (attempts <= 0) {
+				logger.error(`unable to connect to IPC socket -> ${ipcSocketPath}`)
+				throw new Error("Unable to connect.")
+			}
+		}
+	}
+
+	let taskFinishedAt: number | undefined
+	let taskAbortedAt: number | undefined
+	let taskAbortReason: string | undefined
+	let taskTimedOut = false
+	let rooTaskId: string | undefined
+	let isClientDisconnected = false
+	let runError: Error | undefined
+	let startNewTaskRetrySent = false
+
+	client.on(IpcMessageType.Ack, (ack) => {
+		logger.info(`ipc ack -> clientId=${ack.clientId} pid=${ack.pid} ppid=${ack.ppid}`)
+	})
+
+	client.on(IpcMessageType.TaskEvent, async (taskEvent) => {
+		const { eventName, payload } = taskEvent
+
+		if (eventName === RooCodeEventName.TaskCreated) {
+			rooTaskId = payload[0]
+			logger.info(`task created: ${rooTaskId}`)
+		}
+
+		if (eventName === RooCodeEventName.TaskStarted) {
+			rooTaskId = payload[0]
+			logger.info(`task started: ${rooTaskId}`)
+		}
+
+		if (eventName === RooCodeEventName.TaskAborted) {
+			taskAbortedAt = Date.now()
+			taskAbortReason = payload[0]
+			logger.error(`task aborted: ${taskAbortReason}`)
+		}
+
+		if (eventName === RooCodeEventName.TaskCompleted) {
+			taskFinishedAt = Date.now()
+		}
+	})
+
+	client.on(IpcMessageType.Disconnect, async () => {
+		logger.info(`disconnected from IPC socket -> ${ipcSocketPath}`)
+		isClientDisconnected = true
+	})
+
+	const zgsmCodeModes = ["vibe", "strict", "raw", "plan"] as const
+	type ZgsmCodeMode = (typeof zgsmCodeModes)[number]
+	const allowedZgsmCodeModeSet = new Set<ZgsmCodeMode>(zgsmCodeModes)
+	const zgsmCodeModeCandidate = typeof zgsmCodeMode === "string" ? zgsmCodeMode.trim() : ""
+	const effectiveZgsmCodeMode: ZgsmCodeMode = allowedZgsmCodeModeSet.has(zgsmCodeModeCandidate as ZgsmCodeMode)
+		? (zgsmCodeModeCandidate as ZgsmCodeMode)
+		: "vibe"
+
+	const apiProviderCandidate = (apiProvider || "").trim() || "zgsm"
+	if (!isProviderName(apiProviderCandidate)) {
+		throw new Error(`Invalid apiProvider: ${apiProviderCandidate}`)
+	}
+	const effectiveApiProvider: ProviderName = apiProviderCandidate
+
+	const sendStartNewTask = (newTab?: boolean) => {
+		const zgsmAuth = effectiveApiProvider === "zgsm" ? loadCostrictAuth() : null
+		const zaiApiKey = (process.env.ZAI_API_KEY || "").trim() || undefined
+		const zaiDefaults =
+			effectiveMode === "swebench" && effectiveApiProvider === "zai"
+				? {
+						apiModelId: "glm-4.7",
+						...(zaiApiKey ? { zaiApiKey } : {}),
+					}
+				: null
+
+		logger.info(`sending StartNewTask${newTab ? " (newTab=true)" : ""}`)
+		client!.sendCommand({
+			commandName: TaskCommandName.StartNewTask,
+			data: {
+				configuration: {
+					...EVALS_SETTINGS,
+					apiProvider: effectiveApiProvider,
+					...(zaiDefaults ? zaiDefaults : {}),
+					mode: effectiveMode,
+					zgsmCodeMode: effectiveZgsmCodeMode,
+					openRouterApiKey: process.env.OPENROUTER_API_KEY,
+					...(zgsmAuth
+						? {
+								zgsmAccessToken: zgsmAuth.accessToken,
+								...(zgsmAuth.baseUrl ? { zgsmBaseUrl: zgsmAuth.baseUrl } : {}),
+							}
+						: {}),
+				},
+				text: prompt,
+				...(newTab ? { newTab } : {}),
+			},
+		})
+	}
+
+	sendStartNewTask()
+
+	try {
+		await pWaitFor(() => !!rooTaskId || !!taskAbortedAt || isClientDisconnected, {
+			interval: 250,
+			timeout: 15_000,
+		})
+	} catch (_error) {
+		if (!startNewTaskRetrySent && !isClientDisconnected && !taskAbortedAt) {
+			startNewTaskRetrySent = true
+			logger.error("no TaskCreated/TaskStarted observed after StartNewTask; retrying with newTab")
+			sendStartNewTask(true)
+		}
+	}
+
+	try {
+		await pWaitFor(() => !!taskFinishedAt || !!taskAbortedAt || isClientDisconnected, {
+			interval: 1_000,
+			timeout: timeout,
+		})
+	} catch (_error) {
+		taskTimedOut = true
+		logger.error("time limit reached")
+
+		if (rooTaskId && !isClientDisconnected) {
+			logger.info("cancelling task")
+			client.sendCommand({ commandName: TaskCommandName.CancelTask, data: rooTaskId })
+			await new Promise((resolve) => setTimeout(resolve, 5_000))
+		}
+
+		taskFinishedAt = Date.now()
+	}
+
+	if (taskAbortedAt && !taskTimedOut) {
+		runError = new Error(`Task aborted: ${taskAbortReason || "unknown"}`)
+		taskFinishedAt = taskFinishedAt || Date.now()
+	}
+
+	if (!taskFinishedAt && !taskTimedOut) {
+		try {
+			const entries = fs.readdirSync(vscodeLogsDir, { withFileTypes: true })
+			const names = entries.map((e) => e.name).slice(-20)
+			logger.error(`client disconnected before task finished; vscodeLogsDir=${vscodeLogsDir}; entries=${names}`)
+		} catch (error) {
+			logger.error(
+				`client disconnected before task finished; vscodeLogsDir=${vscodeLogsDir}; could not read logs dir:`,
+				error,
+			)
+		}
+		runError = new Error("Client disconnected before task completion.")
+		taskFinishedAt = Date.now()
+	}
+
+	if (rooTaskId && !isClientDisconnected) {
+		logger.info("closing task")
+		client.sendCommand({ commandName: TaskCommandName.CloseTask, data: rooTaskId })
+		await new Promise((resolve) => setTimeout(resolve, 2_000))
+	}
+
+	if (!isClientDisconnected) {
+		logger.info("disconnecting client")
+		client.disconnect()
+	}
+
+	logger.info("waiting for subprocess to finish")
+	controller.abort()
+
+	// Wait for subprocess to finish gracefully, with a timeout.
+	const SUBPROCESS_TIMEOUT = 10_000
+
+	try {
+		await Promise.race([
+			subprocess,
+			new Promise((_, reject) =>
+				setTimeout(() => reject(new SubprocessTimeoutError(SUBPROCESS_TIMEOUT)), SUBPROCESS_TIMEOUT),
+			),
+		])
+
+		logger.info("subprocess finished gracefully")
+	} catch (error) {
+		if (error instanceof SubprocessTimeoutError) {
+			logger.error("subprocess did not finish within timeout, force killing")
+
+			try {
+				if (subprocess.kill("SIGKILL")) {
+					logger.info("SIGKILL sent to subprocess")
+				} else {
+					logger.error("failed to send SIGKILL to subprocess")
+				}
+			} catch (killError) {
+				logger.error("subprocess.kill(SIGKILL) failed:", killError)
+			}
+		} else {
+			throw error
+		}
+	}
+
+	// Copy conversation history files from VS Code extension storage to the log directory
+	if (rooTaskId) {
+		const logDir = containerized ? `/var/log/evals/swe` : `/tmp/evals/swe`
+		const instanceDir = path.dirname(workspacePath)
+
+		await copyConversationHistory({
+			rooTaskId,
+			logDir,
+			language: "swe",
+			exercise: instanceId,
+			iteration: 1,
+			logger,
+			containerized,
+			userDataDir,
+		})
+		await copyConversationHistory({
+			rooTaskId,
+			logDir: instanceDir,
+			language: "swe",
+			exercise: instanceId,
+			iteration: 1,
+			logger,
+			containerized,
+			userDataDir,
+		})
+
+		await copyVscodeAgentLogs({
+			userDataDir,
+			destDir: instanceDir,
+			prefix: `swe-${instanceId}.1`,
+			messageLogPath,
+			logger,
+		})
+	}
+
+	logger.close()
+
+	if (runError) {
+		throw runError
+	}
+
+	// Extract results
+	const gitDiffResult = await execa("git", ["diff", "HEAD"], { cwd: workspacePath })
+	const patch = gitDiffResult.stdout
+
+	const logDir = containerized ? `/var/log/evals/swe` : `/tmp/evals/swe`
+	const trajectoryFile = path.join(logDir, `swe-${instanceId}.1_api_conversation_history.json`)
+
+	let trajectory = null
+	try {
+		const trajectoryContent = await fsp.readFile(trajectoryFile, "utf-8")
+		trajectory = JSON.parse(trajectoryContent)
+	} catch (error) {
+		logger.error(`could not read trajectory from ${trajectoryFile}:`, error)
+	}
+
+	return { patch, trajectory }
+}
+
+export const processTaskForSwe = async ({
+	instanceId,
+	workspacePath,
+	prompt,
+	apiProvider,
+	mode,
+	zgsmCodeMode,
+	timeoutMs,
+	logger,
+}: {
+	instanceId: string
+	workspacePath: string
+	prompt: string
+	apiProvider?: string
+	mode?: string
+	zgsmCodeMode?: string
+	timeoutMs?: number
+	logger?: Logger
+}) => {
+	try {
+		const result = await runSweTask({
+			instanceId,
+			workspacePath,
+			prompt,
+			apiProvider,
+			mode,
+			zgsmCodeMode,
+			timeout: timeoutMs,
+			logger,
+		})
+
+		// Output structured JSON for Python orchestrator
+		const payload = `__COSTRICT_RESULT__${JSON.stringify(result)}\n`
+		await new Promise<void>((resolve, reject) => {
+			process.stdout.write(payload, (err) => {
+				if (err) reject(err)
+				else resolve()
+			})
+		})
+	} catch (error) {
+		console.error(error)
+		process.exitCode = 1
 	}
 }
 
@@ -518,6 +1106,8 @@ export const runTask = async ({ run, task, publish, logger, jobToken }: RunTaskO
 			exercise,
 			iteration: task.iteration,
 			logger,
+			containerized,
+			userDataDir: "/roo/.vscode",
 		})
 	}
 
