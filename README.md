@@ -55,6 +55,20 @@ CoStrict 的 `swebench` mode 通过“状态机 + 工具拦截器”约束 agent
 - `preds.json`：dict 形式的 `{instance_id: patch}`
 - `instances/{instance_id}/...`：单个实例的日志与中间产物（`progress.log`、`patch.diff`、runner stdout tail、VS Code logs 等）
 
+## Artifacts
+
+Model: glm-4.6
+Resolved (total): 65.80% (329 / 500)
+Resolved (submitted): 65.80% (329 / 500)
+Submitted: 100.00% (500)
+Errors: 0
+Pending: 0
+Successful runs: 500
+Failed runs: 0
+
+- **Predictions**: [`artifacts/swebench_verified_test/predictions.json`](artifacts/swebench_verified_test/predictions.json)
+- **Report**: [`artifacts/swebench_verified_test/Subset.swe_bench_verified__test.json`](artifacts/swebench_verified_test/Subset.swe_bench_verified__test.json)
+
 ## Quick Start
 
 从零开始跑通一次单实例/批量、并导出 `predictions.jsonl`：
