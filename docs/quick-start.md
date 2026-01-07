@@ -25,12 +25,14 @@ Python orchestrator 默认使用 `costrict-evals-runner:dev` 作为 runner 镜�
 docker build -f packages/evals/Dockerfile.runner -t costrict-evals-runner:dev .
 ```
 
+在构建 runner 镜像前，请先新建 `packages/evals/.env.local` 并写入 `OPENROUTER_API_KEY=`（即使不使用 OPENROUTER，也需要这个占位以避免 Dockerfile.runner 的 `COPY packages/evals/.env.local` 失败）。
+
 ## 2) 安装 Python orchestrator（必须）
 
 在仓库根目录执行：
 
 ```bash
-pip install -e costrict-debug-cli/costrict-debug-cli
+pip install -e costrict-debug-cli
 ```
 
 验证：
