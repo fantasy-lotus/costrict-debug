@@ -4,7 +4,7 @@
 > 若遇到 `Cannot connect to Docker daemon`，在 macOS 常见解决方式：
 >
 > ```bash
-> export DOCKER_HOST=unix:///Users/lotus/.docker/run/docker.sock
+> export DOCKER_HOST=unix:///Users/lotus/.docker/run/docker.sock（替换为你的Docker daemon 通信套接字路径）
 > ```
 
 目标：在本仓库中跑通一次 CoStrict-Debug（CoStrict + SWE-bench mode + Docker 编排），并导出可用于官方评估/提交的 `predictions.jsonl`。
