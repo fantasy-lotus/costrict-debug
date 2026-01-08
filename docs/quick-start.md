@@ -55,6 +55,9 @@ export ROO_CODE_CLOUD_TOKEN="..."  # 可选
 
 - runner 会尝试读取 `~/.costrict/share/auth.json`（并在容器中挂载到 `/roo/.costrict/share`）
 - 若未找到或 token 过期，会在 runner 容器内报错（类似“CoStrict auth not found”）
+- 这里不太推荐使用zgsm（也可以跑）因为没有专门对此进行修改（时间紧迫）
+  当前默认是auto模型，上下文只有128k
+  有可能频繁触发上下文压缩，但是实际运行效果也不差
 
 **常见问题**：
 
