@@ -1,4 +1,4 @@
-# Quick Start（SWE-bench Verified）
+<img width="1976" height="984" alt="image" src="https://github.com/user-attachments/assets/6ad3d927-aed4-4db2-9dd5-a7cb7fc533bb" /># Quick Start（SWE-bench Verified）
 
 > **重要**：运行前必须确保 Docker Desktop（或 Docker Engine）已启动。  
 > 若遇到 `Cannot connect to Docker daemon`，在 macOS 常见解决方式：
@@ -71,7 +71,7 @@ export ROO_CODE_CLOUD_TOKEN="..."  # 可选
 
 ```bash
 costrict-swebench run-instance \
-  --instance-id django__django-11055 \
+  --instance-id django__django-13158 \
   --run-id quick-001 \
   --timeout 600 \
   --api-provider zgsm \
@@ -80,7 +80,7 @@ costrict-swebench run-instance \
 
 产物目录：
 
-- `.runs/quick-001/instances/django__django-11055/`
+- `.runs/quick-001/instances/django__django-13158/`
 
 ## 5) 批量运行（生成 predictions）
 
@@ -101,8 +101,8 @@ costrict-swebench run-batch \
 
 ```bash
 cat > instances.txt << 'EOF'
-django__django-11055
-pytest-dev__pytest-10356
+django__django-13158
+django__django-13346
 EOF
 
 costrict-swebench run-batch \
@@ -128,7 +128,7 @@ costrict-swebench export-preds \
 
 ```bash
 costrict-swebench run-instance \
-  --instance-id django__django-11055 \
+  --instance-id django__django-13158 \
   --run-id quick-001 \
   --timeout 1200 \
   --api-provider zgsm \
